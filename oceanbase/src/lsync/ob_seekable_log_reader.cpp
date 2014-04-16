@@ -21,9 +21,16 @@ namespace oceanbase
           break;
         }
       }
-      if (OB_SUCCESS == ret && last_log_seq_id > 0 && seq != last_log_seq_id)
+      if (OB_SUCCESS == ret && last_log_seq_id > 0)
       {
-        ret = (last_log_seq_id+1 == seq)? OB_NEED_RETRY: OB_ERROR_OUT_OF_RANGE;
+        if (last_log_seq_id+1 == seq || (OB_LOG_SWITCH_LOG == cmd && last_log_seq_id == seq))
+        {
+          ret = OB_NEED_RETRY;
+        }
+        else if (last_log_seq_id != seq)
+        {
+          ret = OB_ERROR_OUT_OF_RANGE;
+        }
       }
       return ret;
     }
@@ -102,7 +109,7 @@ namespace oceanbase
         {
           if (cmd == OB_LOG_SWITCH_LOG)
           {
-            TBSYS_LOG(INFO, "switch log: last_log_file_id = %d", last_log_file_id_);
+            TBSYS_LOG(INFO, "switch log: last_log_file_id = %ld", last_log_file_id_);
             last_log_file_id_ = 0;
           }
           else
@@ -179,7 +186,7 @@ namespace oceanbase
       while(!stop_)
       {
         ret = get(log_file_id, log_seq_id, cmd, seq, log_data, data_len);
-        if (OB_READ_NOTHING == ret && (tbutil::Time::now() - now).toMilliSeconds() < timeout)
+        if (OB_READ_NOTHING == ret && (tbutil::Time::now() - now).toMicroSeconds() < timeout)
         {
           usleep(10000);
           continue;
@@ -257,7 +264,7 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (ret = mem_chunk_serialize(buf, limit, pos, log_data, log_entry.get_log_data_len())))
       {
-        TBSYS_LOG(DEBUG, "copy_log_data(buf=%p,limit=%ld,pos=%ld,data_len=%ld)=>%d",
+        TBSYS_LOG(DEBUG, "copy_log_data(buf=%p,limit=%ld,pos=%ld,data_len=%d)=>%d",
                   buf, limit, pos, log_entry.get_log_data_len(), ret);
       }
 

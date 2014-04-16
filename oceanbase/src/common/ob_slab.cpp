@@ -1,18 +1,19 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 TaoBao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_slab.cpp for ...
+ * ob_slab.cpp is for what ...
+ *
+ * Version: $id$
  *
  * Authors:
- *   maoqi <maoqi@taobao.com>
+ *   MaoQi maoqi@taobao.com
  *
  */
+
 #include "ob_slab.h"
 #include "ob_malloc.h"
 
@@ -26,7 +27,7 @@ namespace oceanbase
     /*-----------------------------------------------------------------------------
      *  ObSlabCacheManager
      *-----------------------------------------------------------------------------*/
-    ObSlabCacheManager::ObSlabCacheManager():cache_cache_("cache_cache",sizeof(ObSlabCache)) 
+    ObSlabCacheManager::ObSlabCacheManager():cache_cache_("cache_cache",sizeof(ObSlabCache) )
     {
     }
 
@@ -61,6 +62,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
+        TBSYS_LOG(INFO,"create cache %s,size:%ld,align:%ld",name,size,align);
         char *buf = cache_cache_.slab_cache_alloc();
         if (NULL == buf)
         {
@@ -141,13 +143,13 @@ namespace oceanbase
       if (OB_SUCCESS == err)
       {
         snprintf(slab_name_,strlen(name)+1,"%s",name);
-        obj_size_ = (size + align - 1) & (~(align - 1)); 
+        obj_size_ = (size + sizeof(ObSlabItem) + align - 1) & (~(align - 1)); 
         align_ = align;
         obj_per_slab_ =  (MAX_SLAB_SIZE - sizeof(ObSlab) ) / obj_size_;
         LIST_INIT(&slabs_partial_);
         LIST_INIT(&slabs_free_);
         LIST_INIT(&slabs_full_);
-        TBSYS_LOG(INFO,"create slab %s success,obj_size_:%d,obj_per_slab:%d",slab_name_,obj_size_,obj_per_slab_);
+        TBSYS_LOG(INFO,"create slab %s success,obj_size_:%ld,obj_per_slab:%ld",slab_name_,obj_size_,obj_per_slab_);
       }
     }
 
@@ -279,7 +281,7 @@ namespace oceanbase
     ObSlab* ObSlabCache::alloc_new_slab()
     {
       int64_t len = obj_per_slab_ * obj_size_ + sizeof(ObSlab);
-      ObSlab* slab = static_cast<ObSlab *>(ob_malloc(len));
+      ObSlab* slab = static_cast<ObSlab *>(ob_malloc(len, ObModIds::OB_SLAB));
       if (NULL != slab)
       {
         slab->inuse_ = 0;
@@ -321,6 +323,8 @@ namespace oceanbase
           item->slab_ = slab;
 #ifdef OB_SLAB_DEBUG
           item->magic_ = OB_ITEM_MAGIC;
+          //TBSYS_LOG(INFO,"slab:%p,slab->mem_:%p,obj_size_:%ld,item:%p,item->magic_:%lu",
+           //   slab,slab->mem_,obj_size_,item,item->magic_);
 #endif
           item->u_.next_ = reinterpret_cast<ObSlabItem *>(slab->mem_ + (i + 1) * obj_size_);
         }
@@ -330,4 +334,3 @@ namespace oceanbase
   } /* common */
   
 } /* oceanbase */
-

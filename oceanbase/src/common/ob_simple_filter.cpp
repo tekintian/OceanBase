@@ -1,18 +1,20 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_simple_filter.cpp for ...
+ *
+ *
+ * Version: 0.1: ob_simple_filter.cpp,v 0.1 2011/03/17 15:39:30 zhidong Exp $
  *
  * Authors:
- *   xielun <xielun.szd@taobao.com>
+ *   chuanhui <xielun.szd@taobao.com>
+ *     - some work details if you want
  *
  */
+
 #include "ob_define.h"
 #include "ob_cell_array.h"
 #include "ob_common_param.h"
@@ -22,11 +24,13 @@ using namespace oceanbase::common;
 
 ObSimpleFilter::ObSimpleFilter()
 {
+  conditions_.init(sizeof(condition_buf_)/sizeof(condition_buf_[0]), condition_buf_);
 }
 
 ObSimpleFilter::ObSimpleFilter(const ObSimpleFilter & other)
 {
   *this = other;
+  conditions_.init(sizeof(condition_buf_)/sizeof(condition_buf_[0]), condition_buf_);
 }
 
 ObSimpleFilter::~ObSimpleFilter()
@@ -35,10 +39,11 @@ ObSimpleFilter::~ObSimpleFilter()
 
 // deep copy column name and obj string
 int ObSimpleFilter::add_cond(const ObString & column_name, const ObLogicOperator & cond_op,
-    const ObObj & cond_value)
+  const ObObj & cond_value)
 {
+  int ret = OB_SUCCESS;
   ObString store_name;
-  int ret = string_buffer_.write_string(column_name, &store_name);
+  ret = string_buffer_.write_string(column_name, &store_name);
   if (ret != OB_SUCCESS)
   {
     TBSYS_LOG(ERROR, "store column name failed:src[%.*s], ret[%d]",
@@ -54,6 +59,7 @@ int ObSimpleFilter::add_cond(const ObString & column_name, const ObLogicOperator
       TBSYS_LOG(ERROR, "copy obj failed:ret[%d]", ret);
     }
   }
+
 
   if (OB_SUCCESS == ret)
   {
@@ -100,10 +106,11 @@ int ObSimpleFilter::copy_obj(const ObObj & cond_value, ObObj & store_value)
 
 // only deep copy obj string
 int ObSimpleFilter::add_cond(const uint64_t column_index, const ObLogicOperator & cond_op,
-    const ObObj & cond_value)
+  const ObObj & cond_value)
 {
+  int ret = OB_SUCCESS;
   ObObj store_obj;
-  int ret = copy_obj(cond_value, store_obj);
+  ret = copy_obj(cond_value, store_obj);
   if (ret != OB_SUCCESS)
   {
     TBSYS_LOG(ERROR, "copy obj failed:ret[%d]", ret);
@@ -130,25 +137,26 @@ int ObSimpleFilter::add_cond(const uint64_t column_index, const ObLogicOperator 
 
 int ObSimpleFilter::add_cond(const ObSimpleCond & cond)
 {
-  int ret = conditions_.push_back(cond);
-  if (ret != OB_SUCCESS)
+  int ret = OB_SUCCESS; 
+  if (!conditions_.push_back(cond))
   {
     TBSYS_LOG(ERROR, "push back the condition item failed:ret[%d]", ret);
+    ret = OB_ARRAY_OUT_OF_RANGE;
   }
   return ret;
 }
 
 const ObSimpleCond * ObSimpleFilter::operator [] (const int64_t index) const
 {
-  ObSimpleCond * ret = NULL;
-  if ((index < 0) || (index >= conditions_.size()))
+  const ObSimpleCond * ret = NULL;
+  if ((index < 0) || (index >= conditions_.get_array_index()))
   {
     TBSYS_LOG(ERROR, "check index failed:index[%ld], count[%ld]",
-        index, (int64_t)conditions_.size());
+      index, (int64_t)conditions_.get_array_index());
   }
   else
   {
-    ret = &conditions_[index];
+    ret = condition_buf_+index;
   }
   return ret;
 }
@@ -158,19 +166,19 @@ int ObSimpleFilter::operator = (const ObSimpleFilter & other)
   this->reset();
   int ret = OB_SUCCESS;
   ObSimpleCond cond;
-  int64_t size = other.conditions_.size();
+  int64_t size = other.conditions_.get_array_index();
   for (int64_t i = 0; i < size; ++i)
   {
-    cond = other.conditions_[i];
+    cond = other.condition_buf_[i];
     if (cond.get_column_index() != ObSimpleCond::INVALID_INDEX)
     {
       ret = add_cond(cond.get_column_name(), cond.get_logic_operator(),
-          cond.get_right_operand());
+        cond.get_right_operand());
     }
     else
     {
       ret = add_cond(cond.get_column_index(), cond.get_logic_operator(), 
-          cond.get_right_operand());
+        cond.get_right_operand());
     }
     if (ret != OB_SUCCESS)
     {
@@ -183,13 +191,13 @@ int ObSimpleFilter::operator = (const ObSimpleFilter & other)
 
 bool ObSimpleFilter::operator == (const ObSimpleFilter & other) const
 {
-  int64_t size = conditions_.size();
-  bool ret = (size == other.conditions_.size());
+  int64_t size = conditions_.get_array_index();
+  bool ret = (size == other.conditions_.get_array_index());
   if (true == ret)
   {
     for (int64_t i = 0; i < size; ++i)
     {
-      ret = (conditions_[i] == other.conditions_[i]);
+      ret = (condition_buf_[i] == other.condition_buf_[i]);
       if (false == ret)
       {
         TBSYS_LOG(DEBUG, "check the %ldth condition failed", i);
@@ -201,18 +209,18 @@ bool ObSimpleFilter::operator == (const ObSimpleFilter & other) const
 }
 
 int ObSimpleFilter::check(const ObCellArray & cells, const int64_t row_begin,
-    const int64_t row_end, bool & result) const
+  const int64_t row_end, bool & result) const
 {
   int ret = OB_SUCCESS;
   result = true;
   ObSimpleCond item;
   int64_t index = 0;
-  int64_t size = conditions_.size();
+  int64_t size = conditions_.get_array_index();
   for (int64_t i = 0; i < size; ++i)
   {
-    item = conditions_[i];
+    item = condition_buf_[i];
     index = item.get_column_index() + row_begin;
-    if (index <= row_end) 
+    if (index <= row_end)
     {
       result = item.calc(const_cast<ObCellArray &>(cells)[index].value_);
       // only support &&
@@ -224,11 +232,52 @@ int ObSimpleFilter::check(const ObCellArray & cells, const int64_t row_begin,
     else
     {
       TBSYS_LOG(ERROR, "check cell index failed:index[%ld], begin[%ld], end[%ld]",
-          item.get_column_index(), row_begin, row_end);
+        item.get_column_index(), row_begin, row_end);
       ret = OB_ERROR;
       break;
     }
   }
+  return ret;
+}
+
+int ObSimpleFilter::default_false_check(const ObObj* objs, const int64_t obj_count, bool& result)
+{
+  int ret = OB_SUCCESS;
+  result = false; // default value is false
+  ObSimpleCond item;
+  int64_t index = 0;
+  int64_t size = conditions_.get_array_index();
+
+  if (NULL == objs || obj_count <= 0)
+  {
+    TBSYS_LOG(WARN, "invlid param, objs=%p, obj_count=%ld", objs, obj_count);
+    ret = OB_ERROR;
+  }
+  else
+  {
+    for (int64_t i = 0; i < size; ++i)
+    {
+      item = condition_buf_[i];
+      index = item.get_column_index();
+      if (index < obj_count)
+      {
+        result = item.calc(objs[index]);
+        // only support &&
+        if (false == result)
+        {
+          break;
+        }
+      }
+      else
+      {
+        TBSYS_LOG(ERROR, "check cell index failed:index=%ld, objs=%p, obj_count=%ld",
+          item.get_column_index(), objs, obj_count);
+        ret = OB_ERROR;
+        break;
+      }
+    }
+  }
+
   return ret;
 }
 
@@ -241,10 +290,10 @@ void ObSimpleFilter::reset(void)
 DEFINE_SERIALIZE(ObSimpleFilter)
 {
   int ret = OB_SUCCESS;
-  int64_t size = conditions_.size();
+  int64_t size = conditions_.get_array_index();
   for (int64_t i = 0; i < size; ++i)
   {
-    ret = conditions_[i].serialize(buf, buf_len, pos);
+    ret = condition_buf_[i].serialize(buf, buf_len, pos);
     if (ret != OB_SUCCESS)
     {
       TBSYS_LOG(ERROR, "the %ldth condition serialize failed:ret[%d]", i, ret);
@@ -268,7 +317,7 @@ DEFINE_DESERIALIZE(ObSimpleFilter)
     ret = cond.deserialize(buf, data_len, pos);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(ERROR, "the condition deserialize failed", ret);
+      TBSYS_LOG(ERROR, "the condition deserialize failed:ret[%d]", ret);
       break;
     }
     // add the condition item
@@ -287,13 +336,20 @@ DEFINE_DESERIALIZE(ObSimpleFilter)
 DEFINE_GET_SERIALIZE_SIZE(ObSimpleFilter)
 {
   int64_t total_size = 0;
-  int64_t size = conditions_.size();
+  int64_t size = conditions_.get_array_index();
   for (int64_t i = 0; i < size; ++i)
   {
-    total_size += conditions_[i].get_serialize_size();
+    total_size += condition_buf_[i].get_serialize_size();
   }
   return total_size;
 }
 
 
 
+int ObSimpleFilter::safe_copy(const ObSimpleFilter &other)
+{
+  int err = OB_SUCCESS;
+  memcpy(condition_buf_, other.condition_buf_, sizeof(condition_buf_));
+  conditions_.init(sizeof(condition_buf_)/sizeof(condition_buf_[0]), condition_buf_, other.conditions_.get_array_index());
+  return err;
+}

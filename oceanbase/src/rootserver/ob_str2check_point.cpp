@@ -1,19 +1,14 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_str2check_point.cpp for ...
- *
- * Authors:
- *   daoan <daoan@taobao.com>
- *
- */
-
+/*===============================================================
+*   (C) 2007-2010 Taobao Inc.
+*   
+*   
+*   Version: 0.1 2010-09-26
+*   
+*   Authors:
+*          daoan(daoan@taobao.com)
+*   
+*
+================================================================*/
 #include <tbsys.h>
 
 #include "common/ob_schema.h"
@@ -55,4 +50,3 @@ int main(int argc, char* argv[])
   return 0;
 
 }
-

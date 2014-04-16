@@ -1,13 +1,12 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_transfer_sstable_query.cpp for ...
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation. 
+ *  
+ * ob_transfer_sstable_query.cpp for get or scan columns from
+ * transfer sstables. 
  *
  * Authors:
  *   huating <huating.zmq@taobao.com>
@@ -16,8 +15,9 @@
 #include <tbsys.h>
 #include "common/ob_get_param.h"
 #include "common/ob_scan_param.h"
-#include "sstable/ob_seq_sstable_scanner.h"
+#include "sstable/ob_sstable_scanner.h"
 #include "sstable/ob_sstable_getter.h"
+#include "sstable/ob_disk_path.h"
 #include "ob_transfer_sstable_query.h"
 
 namespace oceanbase
@@ -30,30 +30,56 @@ namespace oceanbase
 
     ObTransferSSTableQuery::ObTransferSSTableQuery(common::IFileInfoMgr &fileinfo_mgr)
     : inited_(false), block_cache_(fileinfo_mgr),
-      block_index_cache_(fileinfo_mgr)
+      block_index_cache_(fileinfo_mgr), sstable_row_cache_(NULL)
     {
 
     }
 
     ObTransferSSTableQuery::~ObTransferSSTableQuery()
     {
-
+      if (NULL != sstable_row_cache_)
+      {
+        sstable_row_cache_->destroy();
+        delete sstable_row_cache_;
+        sstable_row_cache_ = NULL;
+      }
     }
 
-    int ObTransferSSTableQuery::init(const ObBlockCacheConf& bc_conf, 
-                                     const ObBlockIndexCacheConf& bic_conf)
+    int ObTransferSSTableQuery::init(const int64_t block_cache_size,
+                                     const int64_t block_index_cache_size,
+                                     const int64_t sstable_row_cache_size)
     {
       int ret = OB_SUCCESS;
 
       //ret = fileinfo_cache_.init(bc_conf.ficache_max_num);
       if (OB_SUCCESS == ret)
       {
-        ret = block_cache_.init(bc_conf);
+        ret = block_cache_.init(block_cache_size);
       }
 
       if (OB_SUCCESS == ret)
       {
-        ret = block_index_cache_.init(bic_conf);
+        ret = block_index_cache_.init(block_index_cache_size);
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        if (sstable_row_cache_size > 0)
+        {
+          sstable_row_cache_ = new (std::nothrow) ObSSTableRowCache();
+          if (NULL != sstable_row_cache_)
+          {
+            if (OB_SUCCESS != (ret = sstable_row_cache_->init(sstable_row_cache_size)))
+            {
+              TBSYS_LOG(ERROR, "init sstable row cache failed");
+            }
+          }
+          else 
+          {
+            TBSYS_LOG(WARN, "failed to new sstable row cache");
+            ret = OB_ERROR;
+          }
+        }
       }
 
       if (OB_SUCCESS == ret)
@@ -61,6 +87,29 @@ namespace oceanbase
         inited_ = true;
       }
 
+      return ret;
+    }
+
+    int ObTransferSSTableQuery::enlarge_cache_size(
+       const int64_t block_cache_size, 
+       const int64_t block_index_cache_size,
+       const int64_t sstable_row_cache_size)
+    {
+      int ret = OB_SUCCESS;
+      if (!inited_)
+      {
+        TBSYS_LOG(INFO, "not inited");
+        ret = OB_NOT_INIT;
+      }
+      else
+      {
+        block_cache_.enlarg_cache_size(block_cache_size);
+        block_index_cache_.enlarg_cache_size(block_index_cache_size);
+        if (NULL != sstable_row_cache_ && sstable_row_cache_size > 0)
+        {
+          sstable_row_cache_->enlarg_cache_size(sstable_row_cache_size);
+        }
+      }
       return ret;
     }
 
@@ -74,7 +123,6 @@ namespace oceanbase
       ObSSTableGetter* sstable_getter = dynamic_cast<ObSSTableGetter*>(iterator);
       const ObGetParam::ObRowIndex* row_index = get_param.get_row_index();
       static __thread const ObSSTableReader* sstable_reader = NULL;
-      sstable_reader = &reader;
 
       if (!inited_)
       {
@@ -96,8 +144,18 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
+        if (!reader.empty())
+        {
+          sstable_reader = &reader;
+        }
+        else
+        {
+          sstable_reader = NULL;
+        }
+
         ret = sstable_getter->init(block_cache_, block_index_cache_, 
-                                   get_param, &sstable_reader, 1);
+                                   get_param, &sstable_reader, 1, true,
+                                   sstable_row_cache_);
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(WARN, "failed to init sstable getter, ret=%d", ret);
@@ -115,37 +173,72 @@ namespace oceanbase
                                      ObIterator* iterator)
     {
       int ret                           = OB_SUCCESS;
-      ObSeqSSTableScanner *seq_scanner  = dynamic_cast<ObSeqSSTableScanner*>(iterator);
+      ObSSTableScanner *sstable_scanner = dynamic_cast<ObSSTableScanner*>(iterator);
 
-      if (NULL == seq_scanner)
+      if (!inited_)
       {
-        TBSYS_LOG(WARN, "failed to get thread local sequence scaner, seq_scanner=%p", 
-                  seq_scanner);
+        TBSYS_LOG(WARN, "transfer sstable query has not inited");
+        ret = OB_ERROR;
+      }
+      else if (NULL == sstable_scanner)
+      {
+        TBSYS_LOG(WARN, "failed to dynamic cast iterator to sstable scanner, sstable_scanner=%p", 
+                  sstable_scanner);
         ret = OB_ALLOCATE_MEMORY_FAILED;
       }
       else
       {
-        ret = seq_scanner->set_scan_param(scan_param, block_cache_, block_index_cache_);
+        if (!reader.empty())
+        {
+        ret = sstable_scanner->set_scan_param(scan_param, &reader, block_cache_, block_index_cache_, true);
+        }
+        else 
+        {
+          ret = sstable_scanner->set_scan_param(scan_param, NULL, block_cache_, block_index_cache_, true);
+      }
       }
 
-      if (OB_SUCCESS == ret)
+      return ret;
+    }
+
+    int ObTransferSSTableQuery::get_sstable_end_key(
+      const ObSSTableReader& reader, const uint64_t table_id, ObRowkey& row_key)
+    {
+      int ret = OB_SUCCESS;
+      ObBlockIndexPositionInfo info;
+
+      if (!inited_)
       {
-        ret = seq_scanner->add_sstable_reader(&reader);
+        TBSYS_LOG(WARN, "transfer sstable query has not inited");
+        ret = OB_ERROR;
+      }
+      else if (OB_INVALID_ID == table_id)
+      {
+        TBSYS_LOG(WARN, "invalid table id, table_id=%lu", table_id);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else 
+      {
+        info.sstable_file_id_ = reader.get_sstable_id().sstable_file_id_;
+        info.offset_ = reader.get_trailer().get_block_index_record_offset();
+        info.size_   = reader.get_trailer().get_block_index_record_size();
+
+        ret = block_index_cache_.get_end_key(info, table_id, row_key);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "add sstable reader object to seq scanner failed, "
-                          "seq_scanner=%p, reader=%p.", 
-                    seq_scanner, &reader);
-        }
-        else
-        {
-          // do nothing
+          TBSYS_LOG(WARN, "failed to get sstable end key, table_id=%lu", table_id);
         }
       }
 
       return ret;
     }
   }//end namespace updateserver
+
+  namespace sstable
+  {
+    uint64_t get_sstable_disk_no(const uint64_t sstable_id)
+    {
+      return sstable_id; 
+    }
+  }
 }//end namespace oceanbase
-
-

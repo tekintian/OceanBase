@@ -1,18 +1,20 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ *  (C) 2007-2010 Taobao Inc.
+ *  
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License version 2 as
+ *  published by the Free Software Foundation.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ *         ob_bitmap.h is for what ...
  *
- * ob_bitmap.h for ...
+ *  Version: $Id: ob_bitmap.h 2011年08月04日 14时37分25秒 qushan Exp $
  *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
+ *  Authors:
+ *     qushan < qushan@taobao.com >
+ *        - some work details if you want
  */
+
+
 #ifndef OCEANBASE_COMMON_OB_BITMAP_H_
 #define OCEANBASE_COMMON_OB_BITMAP_H_
 
@@ -128,7 +130,7 @@ namespace oceanbase
         }
         static block_type bit_mask(size_type pos) 
         { 
-          return block_type(1) << bit_index(pos); 
+          return static_cast<block_type>(1ULL << bit_index(pos)); 
         }
         static size_type round_up(size_type n, size_type align) 
         { 
@@ -151,7 +153,7 @@ namespace oceanbase
         MemBlock* find_block(const size_type pos, size_type& inner_pos) const;
         MemBlock* expand_block(const size_type pos, size_type& inner_pos);
 
-        template <typename Pred> int for_each_block(Pred pred);
+        template <typename Pred> int for_each_block(Pred pred) const;
 
         int deallocate_block(MemBlock* mem_block)
         {
@@ -207,7 +209,7 @@ namespace oceanbase
 
     template <typename Block, typename Allocator>
       template<typename Pred>
-      int ObBitmap<Block, Allocator>::for_each_block(Pred pred)
+      int ObBitmap<Block, Allocator>::for_each_block(Pred pred) const
       {
         MemBlock* p = header_;
         MemBlock* next = header_;
@@ -249,7 +251,7 @@ namespace oceanbase
           }
           else
           {
-            mem_block->bits_[block_index(inner_pos)] &= ~bit_mask(inner_pos);
+            mem_block->bits_[block_index(inner_pos)] &= static_cast<block_type>(~bit_mask(inner_pos));
           }
         }
         else
@@ -429,4 +431,3 @@ namespace oceanbase
 }
 
 #endif // OCEANBASE_COMMON_OB_BITMAP_H_
-

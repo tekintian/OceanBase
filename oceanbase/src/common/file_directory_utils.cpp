@@ -1,18 +1,21 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  * 
- * Version: $Id$
  *
- * file_directory_utils.cpp for ...
+ * Version: $Id: file_directory_utils.cpp,v 0.1 2010/07/22 16:58:07 duanfei Exp $
  *
  * Authors:
- *   yanran <yanran.hfs@taobao.com>
+ *   duanfei <duanfei@taobao.com>
+ *     - some work details if you want
+ *   Author Name ...
  *
  */
+
 #include "file_directory_utils.h"
 
 #include "ob_define.h"
@@ -66,7 +69,7 @@ namespace oceanbase
       if (filename == NULL)
         return false;
 
-      int32_t iLen = strlen(filename);
+      int32_t iLen = static_cast<int32_t>(strlen(filename));
       if (iLen > MAX_PATH || iLen <= 0)
           return false;
 
@@ -86,7 +89,7 @@ namespace oceanbase
       if (dirname == NULL)
         return false;
 
-      int32_t iLen = strlen(dirname);
+      int32_t iLen =static_cast<int32_t>(strlen(dirname));
       if (iLen > MAX_PATH || iLen <= 0)
           return false;
 
@@ -127,7 +130,7 @@ namespace oceanbase
       if (fullpath == NULL)
         return false;
 
-      int32_t iLen = strlen(fullpath);
+      int32_t iLen = static_cast<int32_t>(strlen(fullpath));
       if (iLen > MAX_PATH || iLen <= 0x01)
         return false;
 
@@ -251,7 +254,7 @@ namespace oceanbase
         bRet = false;
       }
 
-      while (!readdir_r (dir, &dirent, &result) && result && bRet)
+      while (bRet && !readdir_r (dir, &dirent, &result) && result)
       {
         char *name = result->d_name;
         if (((name[0] == '.') && (name[1] == '\0'))
@@ -384,14 +387,14 @@ namespace oceanbase
       const char* CP_CMD_FORMAT3 = "cp %s/%s %s";
       const char* CP_CMD_FORMAT4 = "cp %s %s";
       char *cmd = NULL;
-      int cp_cmd_len = strlen(src_name) + strlen(dst_name) + strlen(src_path) + strlen(dst_path) + strlen(CP_CMD_FORMAT1);
+      int cp_cmd_len = static_cast<int32_t>(strlen(src_name) + strlen(dst_name) + strlen(src_path) + strlen(dst_path) + strlen(CP_CMD_FORMAT1));
 
       if (OB_SUCCESS == ret)
       {
-        cmd = static_cast<char*>(ob_malloc(cp_cmd_len));
+        cmd = static_cast<char*>(ob_malloc(cp_cmd_len, ObModIds::OB_FILE_DIRECTOR_UTIL));
         if (NULL == cmd)
         {
-          TBSYS_LOG(WARN, "ob_malloc error, cp_cmd_len=%ld", cp_cmd_len);
+          TBSYS_LOG(WARN, "ob_malloc error, cp_cmd_len=%d", cp_cmd_len);
           ret = OB_ERROR;
         }
       }
@@ -423,12 +426,12 @@ namespace oceanbase
 
         if (err < 0)
         {
-          TBSYS_LOG(ERROR, "snprintf cmd[cp_cmd_len=%ld err=%d] error[%s]", cp_cmd_len, err, strerror(errno));
+          TBSYS_LOG(ERROR, "snprintf cmd[cp_cmd_len=%d err=%d] error[%s]", cp_cmd_len, err, strerror(errno));
           ret = OB_ERROR;
         }
         else if (err >= cp_cmd_len)
         {
-          TBSYS_LOG(ERROR, "cmd buffer is not enough[cp_cmd_len=%ld err=%d]", cp_cmd_len, err);
+          TBSYS_LOG(ERROR, "cmd buffer is not enough[cp_cmd_len=%d err=%d]", cp_cmd_len, err);
           ret = OB_ERROR;
         }
       }
@@ -470,7 +473,7 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         int64_t tmp_name_len = strlen(dst_path) + strlen(dst_name) + strlen(tmp_postfix) + 2;
-        tmp_name = static_cast<char*>(ob_malloc(tmp_name_len));
+        tmp_name = static_cast<char*>(ob_malloc(tmp_name_len, ObModIds::OB_FILE_DIRECTOR_UTIL));
         if (NULL == tmp_name)
         {
           TBSYS_LOG(ERROR, "ob_malloc error, tmp_name_len=%ld", tmp_name_len);
@@ -553,14 +556,14 @@ namespace oceanbase
       const char* MV_CMD_FORMAT3 = "mv %s/%s %s";
       const char* MV_CMD_FORMAT4 = "mv %s %s";
       char *cmd = NULL;
-      int mv_cmd_len = strlen(src_path) + strlen(dst_path) + strlen(src_name) + strlen(dst_name) + strlen(MV_CMD_FORMAT1);
+      int mv_cmd_len = static_cast<int32_t>(strlen(src_path) + strlen(dst_path) + strlen(src_name) + strlen(dst_name) + strlen(MV_CMD_FORMAT1));
 
       if (OB_SUCCESS == ret)
       {
-        cmd = static_cast<char*>(ob_malloc(mv_cmd_len));
+        cmd = static_cast<char*>(ob_malloc(mv_cmd_len, ObModIds::OB_FILE_DIRECTOR_UTIL));
         if (NULL == cmd)
         {
-          TBSYS_LOG(WARN, "ob_malloc error, mv_cmd_len=%ld", mv_cmd_len);
+          TBSYS_LOG(WARN, "ob_malloc error, mv_cmd_len=%d", mv_cmd_len);
           ret = OB_ERROR;
         }
       }
@@ -592,12 +595,12 @@ namespace oceanbase
 
         if (err < 0)
         {
-          TBSYS_LOG(ERROR, "snprintf cmd[mv_cmd_len=%ld err=%d] error[%s]", mv_cmd_len, err, strerror(errno));
+          TBSYS_LOG(ERROR, "snprintf cmd[mv_cmd_len=%d err=%d] error[%s]", mv_cmd_len, err, strerror(errno));
           ret = OB_ERROR;
         }
         else if (err >= mv_cmd_len)
         {
-          TBSYS_LOG(ERROR, "cmd buffer is not enough[mv_cmd_len=%ld err=%d]", mv_cmd_len, err);
+          TBSYS_LOG(ERROR, "cmd buffer is not enough[mv_cmd_len=%d err=%d]", mv_cmd_len, err);
           ret = OB_ERROR;
         }
       }
@@ -631,15 +634,15 @@ namespace oceanbase
         ret = OB_INVALID_ARGUMENT;
       }
 
-      int full_name_len = strlen(name) + strlen(path) + 2;
+      int full_name_len = static_cast<int32_t>(strlen(name) + strlen(path) + 2);
       char* full_name = NULL;
 
       if (OB_SUCCESS == ret)
       {
-        full_name = static_cast<char*>(ob_malloc(full_name_len));
+        full_name = static_cast<char*>(ob_malloc(full_name_len, ObModIds::OB_FILE_DIRECTOR_UTIL));
         if (NULL == full_name)
         {
-          TBSYS_LOG(WARN, "ob_malloc error, full_name_len=%ld", full_name_len);
+          TBSYS_LOG(WARN, "ob_malloc error, full_name_len=%d", full_name_len);
           ret = OB_ERROR;
         }
         else
@@ -680,4 +683,3 @@ namespace oceanbase
 
   }//end namespace common
 }//end namespace oceanbase
-

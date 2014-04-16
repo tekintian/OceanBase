@@ -42,8 +42,6 @@ namespace oceanbase
 
     private:
       bool check_inner_stat(void) const;
-      /// packet cmd type for different server
-      int32_t server_type_;
       ObMergerRpcProxy * rpc_proxy_;
     };
 

@@ -1,31 +1,26 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ *   (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
  *
- * ob_root_meta2.cpp for ...
  *
- * Authors:
- *   daoan <daoan@taobao.com>
+ *   Version: 0.1
+ *
+ *   Authors:
+ *      daoan <daoan@taobao.com>
  *
  */
-
 #include <algorithm>
 #include <tbsys.h>
 #include "rootserver/ob_root_meta2.h"
 #include "rootserver/ob_tablet_info_manager.h"
 
-namespace oceanbase 
-{ 
+namespace oceanbase
+{
   using namespace common;
-  namespace rootserver 
+  namespace rootserver
   {
 
-    ObRootMeta2::ObRootMeta2():tablet_info_index_(OB_INVALID_INDEX), last_dead_server_time_(0), migrate_monotonic_time_(0)
+    ObRootMeta2::ObRootMeta2():tablet_info_index_(OB_INVALID_INDEX), last_dead_server_time_(0), last_migrate_time_(0)
     {
       for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
       {
@@ -40,9 +35,22 @@ namespace oceanbase
         TBSYS_LOG(INFO, "server_info_index = %d, tablet_version = %ld",
             server_info_indexes_[i], tablet_version_[i]);
       }
-      TBSYS_LOG(INFO, "last_dead_server_time = %ld migrate_monotonic_time = %ld", 
-          last_dead_server_time_, migrate_monotonic_time_);
+      TBSYS_LOG(INFO, "last_dead_server_time = %ld last_migrate_time = %ld",
+          last_dead_server_time_, last_migrate_time_);
 
+    }
+
+    void ObRootMeta2::dump(const int server_index, int64_t &tablet_num) const
+    {
+      for (int32_t i = 0; i < common::OB_SAFE_COPY_COUNT; i++)
+      {
+        if (server_index == server_info_indexes_[i])
+        {
+          tablet_num ++;
+          TBSYS_LOG(INFO, "tablet_number = %ld, server_info_index = %d, tablet_version = %ld",
+              tablet_num, server_info_indexes_[i], tablet_version_[i]);
+        }
+      }
     }
     void ObRootMeta2::dump_as_hex(FILE* stream) const
     {
@@ -137,16 +145,42 @@ namespace oceanbase
     {
       int64_t len = serialization::encoded_length_vi32(tablet_info_index_);
       len += serialization::encoded_length_vi64(last_dead_server_time_);
-      for (int32_t i = 0; i < OB_SAFE_COPY_COUNT; i++) 
+      for (int32_t i = 0; i < OB_SAFE_COPY_COUNT; i++)
       {
         len += serialization::encoded_length_vi32(server_info_indexes_[i]);
         len += serialization::encoded_length_vi64(tablet_version_[i]);
       }
       return len;
     }
+
+    void ObRootMeta2::has_been_migrated()
+    {
+      last_migrate_time_ = tbsys::CTimeUtil::getTime();
+    }
+
+    bool ObRootMeta2::can_be_migrated_now(int64_t disabling_period_us) const
+    {
+      bool ret = false;
+      if (0 >= last_migrate_time_)
+      {
+        ret = true;
+      }
+      else
+      {
+        int64_t now = tbsys::CTimeUtil::getTime();
+        ret = (now > last_migrate_time_ + disabling_period_us);
+      }
+      return ret;
+    }
+
     ObRootMeta2CompareHelper::ObRootMeta2CompareHelper(ObTabletInfoManager* otim):tablet_info_manager_(otim)
     {
+      if (NULL == otim)
+      {
+        TBSYS_LOG(ERROR, "tablet_info_manager_ is NULL");
+      }
     }
+
     int ObRootMeta2CompareHelper::compare(const int32_t r1, const int32_t r2) const
     {
       int ret = 0;
@@ -156,7 +190,7 @@ namespace oceanbase
         const ObTabletInfo* p_r2 = NULL;
         p_r1 = tablet_info_manager_->get_tablet_info(r1);
         p_r2 = tablet_info_manager_->get_tablet_info(r2);
-        if (p_r1 != p_r2) 
+        if (p_r1 != p_r2)
         {
           if (p_r1 == NULL)
           {
@@ -168,7 +202,7 @@ namespace oceanbase
             TBSYS_LOG(WARN, "no tablet info, idx=%d", r2);
             ret = 1;
           }
-          else 
+          else
           {
             ret = p_r1->range_.compare_with_endkey(p_r2->range_);
           }
@@ -182,9 +216,68 @@ namespace oceanbase
     }
     bool ObRootMeta2CompareHelper::operator () (const ObRootMeta2& r1, const ObRootMeta2& r2) const
     {
-      return compare(r1.tablet_info_index_, r2.tablet_info_index_) < 0;
+      int res = compare(r1.tablet_info_index_, r2.tablet_info_index_);
+      if (0 == res)
+      {
+        //res = static_cast<int> (&r1 - &r2);
+        res = static_cast<int> (r1.tablet_info_index_ - r2.tablet_info_index_);
+      }
+      return res < 0;
+    }
+
+    ObRootMeta2RangeLessThan::ObRootMeta2RangeLessThan(ObTabletInfoManager *tim)
+    {
+      tablet_info_manager_ = tim;
+    }
+
+    bool ObRootMeta2RangeLessThan::operator() (const ObRootMeta2& r1, const ObNewRange& r2) const
+    {
+      bool ret = true;
+      const ObTabletInfo* tablet_info = NULL;
+      if (NULL == tablet_info_manager_)
+      {
+        TBSYS_LOG(ERROR, "tablet_info_manager_ is NULL");
+      }
+      else
+      {
+        if (NULL == (tablet_info = tablet_info_manager_->get_tablet_info(r1.tablet_info_index_)))
+        {
+          TBSYS_LOG(ERROR, "tablet_info not exist");
+        }
+        else
+        {
+          ret = (tablet_info->range_.compare_with_endkey(r2) < 0);
+        }
+      }
+      return ret;
+    }
+
+    ObRootMeta2TableIdLessThan::ObRootMeta2TableIdLessThan(ObTabletInfoManager *tim)
+    {
+      tablet_info_manager_ = tim;
+    }
+
+    bool ObRootMeta2TableIdLessThan::operator() (const ObRootMeta2& r1, const ObNewRange& r2) const
+    {
+      bool ret = true;
+      const ObTabletInfo* tablet_info = NULL;
+      if (NULL == tablet_info_manager_)
+      {
+        TBSYS_LOG(ERROR, "tablet_info_manager_ is NULL");
+      }
+      else
+      {
+        if (NULL == (tablet_info = tablet_info_manager_->get_tablet_info(r1.tablet_info_index_)))
+        {
+          TBSYS_LOG(ERROR, "tablet_info not exist");
+        }
+        else
+        {
+          ret = (tablet_info->range_.table_id_ < r2.table_id_);
+        }
+      }
+      return ret;
     }
 
   } // end namespace rootserver
 } // end namespace oceanbase
-

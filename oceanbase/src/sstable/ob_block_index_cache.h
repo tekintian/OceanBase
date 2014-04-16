@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_block_index_cache.h
+ * ob_block_index_cache.h for block index cache. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef OCEANBASE_SSTABLE_BLOCK_INDEX_CACHE_H_ 
@@ -19,6 +17,7 @@
 #include "common/ob_define.h"
 #include "common/ob_kv_storecache.h"
 #include "common/ob_fileinfo_manager.h"
+#include "common/ob_range2.h"
 #include "ob_sstable_block_index_v2.h"
 
 namespace oceanbase
@@ -45,7 +44,7 @@ namespace oceanbase
       inline int32_t do_size(const sstable::ObSSTableBlockIndexV2& data,
                              CSBlockIndexCacheValueDeepCopyTag)
       {
-        return (const_cast<sstable::ObSSTableBlockIndexV2&>(data).get_deserialize_size());
+        return static_cast<int32_t>((const_cast<sstable::ObSSTableBlockIndexV2&>(data).get_deserialize_size()));
       }
 
       inline void do_destroy(sstable::ObSSTableBlockIndexV2* data,
@@ -58,11 +57,6 @@ namespace oceanbase
 
   namespace sstable
   {
-    struct ObBlockIndexCacheConf
-    {
-      int64_t cache_mem_size;
-    };
-
     class ObBlockIndexCache
     {
       /**
@@ -92,7 +86,8 @@ namespace oceanbase
       explicit ObBlockIndexCache(common::IFileInfoMgr& fileinfo_cache);
       ~ObBlockIndexCache();
 
-      int init(const ObBlockIndexCacheConf& conf);
+      int init(const int64_t cache_mem_size);
+      int enlarg_cache_size(const int64_t cache_mem_size);
 
       /**
        * search block position info by key, return block position info 
@@ -113,7 +108,7 @@ namespace oceanbase
       int get_block_position_info(const ObBlockIndexPositionInfo& block_index_info,
                                   const uint64_t table_id,
                                   const uint64_t column_group_id,
-                                  const common::ObString& key,
+                                  const common::ObRowkey& key,
                                   const SearchMode search_mode,
                                   ObBlockPositionInfos& pos_info);
 
@@ -136,7 +131,7 @@ namespace oceanbase
       int get_block_position_info(const ObBlockIndexPositionInfo& block_index_info,
                                   const uint64_t table_id,
                                   const uint64_t column_group_id,
-                                  const common::ObRange& range,
+                                  const common::ObNewRange& range,
                                   const bool is_reverse_scan,
                                   ObBlockPositionInfos& pos_info);
 
@@ -159,7 +154,7 @@ namespace oceanbase
       int get_single_block_pos_info(const ObBlockIndexPositionInfo& block_index_info,
                                     const uint64_t table_id,
                                     const uint64_t column_group_id,
-                                    const common::ObString &key,
+                                    const common::ObRowkey &key,
                                     const SearchMode search_mode,
                                     ObBlockPositionInfo& pos_info);
       
@@ -204,6 +199,9 @@ namespace oceanbase
       int destroy();
 
       inline int64_t get_cache_mem_size() { return kv_cache_.size(); }
+
+      int get_end_key(const ObBlockIndexPositionInfo& block_index_info,
+                      const uint64_t table_id, common::ObRowkey& row_key);
 
     private:
       int read_record(common::IFileInfoMgr& fileinfo_cache, 

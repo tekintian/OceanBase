@@ -1,22 +1,24 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_simple_filter.h for ...
+ *
+ *
+ * Version: 0.1: ob_simple_filter.h,v 0.1 2011/03/17 15:39:30 zhidong Exp $
  *
  * Authors:
- *   xielun <xielun.szd@taobao.com>
+ *   chuanhui <xielun.szd@taobao.com>
+ *     - some work details if you want
  *
  */
+
 #ifndef OB_SIMPLE_FILTER_H_
 #define OB_SIMPLE_FILTER_H_
 
-#include "ob_vector.h"
+#include "ob_array_helper.h"
 #include "ob_string_buf.h"
 #include "ob_simple_condition.h"
 
@@ -52,6 +54,9 @@ namespace oceanbase
       /// require condition.column_index + row_begin <= row_end
       int check(const ObCellArray & cells, const int64_t row_begin, const int64_t row_end,
           bool & result) const;
+
+      /// use to do expire filter check
+      int default_false_check(const ObObj* objs, const int64_t obj_count, bool& result);
       
       /// reset for reusing this instance
       void reset(void);
@@ -65,6 +70,8 @@ namespace oceanbase
       /// operator == overload
       bool operator == (const ObSimpleFilter & other) const;
 
+      int safe_copy(const ObSimpleFilter &other);
+
       /// serailize or deserialization
       NEED_SERIALIZE_AND_DESERIALIZE;
 
@@ -75,20 +82,18 @@ namespace oceanbase
       int copy_obj(const ObObj & cond_value, ObObj & store_value);
 
     private:
-      /// string buffer for cond value obj string
+      ObSimpleCond  condition_buf_[OB_MAX_COLUMN_NUMBER];
+      ObArrayHelper<ObSimpleCond> conditions_;
       ObStringBuf string_buffer_;
-      /// all conditions for filter
-      ObVector<ObSimpleCond> conditions_;
     };
 
     inline int64_t ObSimpleFilter::get_count(void) const
     {
-      return conditions_.size();
+      return conditions_.get_array_index();
     }
   }
 }
 
 
 #endif //OB_SIMPLE_FILTER_H_
-
 

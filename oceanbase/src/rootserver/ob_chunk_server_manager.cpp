@@ -1,50 +1,45 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_chunk_server_manager.cpp for ...
- *
- * Authors:
- *   daoan <daoan@taobao.com>
- *
- */
-
+/*===============================================================
+*   (C) 2007-2010 Taobao Inc.
+*
+*
+*   Version: 0.1 2010-09-26
+*
+*   Authors:
+*          daoan(daoan@taobao.com)
+*
+*
+================================================================*/
 #include <tblog.h>
 
-#include "rootserver/ob_chunk_server_manager.h"
 #include "common/file_utils.h"
 #include "common/ob_malloc.h"
 #include "common/ob_record_header.h"
+#include "common/utility.h"
+#include "ob_chunk_server_manager.h"
 
-namespace oceanbase 
-{ 
-  namespace rootserver 
+namespace oceanbase
+{
+  namespace rootserver
   {
     using namespace common;
     ObBalanceInfo::ObBalanceInfo()
       :table_sstable_total_size_(0),
        table_sstable_count_(0),
-       curr_migrate_in_num_(0),
-       curr_migrate_out_num_(0)
+       cur_in_(0),
+       cur_out_(0)
     {
     }
-    
+
     ObBalanceInfo::~ObBalanceInfo()
     {
       reset();
     }
-    
+
     void ObBalanceInfo::reset()
     {
       reset_for_table();
-      curr_migrate_in_num_ = 0;
-      curr_migrate_out_num_ = 0;
-      migrate_to_.reset();
+      cur_in_ = 0;
+      cur_out_ = 0;
     }
 
     void ObBalanceInfo::reset_for_table()
@@ -53,10 +48,31 @@ namespace oceanbase
       table_sstable_total_size_ = 0;
     }
 
+    void ObBalanceInfo::inc_in()
+    {
+      atomic_inc(reinterpret_cast<uint32_t*>(&cur_in_));
+    }
+
+    void ObBalanceInfo::inc_out()
+    {
+      atomic_inc(reinterpret_cast<uint32_t*>(&cur_out_));
+    }
+
+    void ObBalanceInfo::dec_in()
+    {
+      atomic_dec(reinterpret_cast<uint32_t*>(&cur_in_));
+    }
+
+    void ObBalanceInfo::dec_out()
+    {
+      atomic_dec(reinterpret_cast<uint32_t*>(&cur_out_));
+    }
+
     ////////////////////////////////////////////////////////////////
     ObServerStatus::ObServerStatus()
-      :last_hb_time_(0),last_hb_time_ms_(0),ms_status_(STATUS_DEAD), status_(STATUS_DEAD), port_cs_(0), port_ms_(0),
-       hb_retry_times_(0)
+      :last_hb_time_(0),last_hb_time_ms_(0),ms_status_(STATUS_DEAD),
+      status_(STATUS_DEAD), port_cs_(0), port_ms_(0), port_ms_sql_(0), hb_retry_times_(0),
+      register_time_(0), wait_restart_(false), can_restart_(false), lms_(false)
     {
     }
     void ObServerStatus::set_hb_time(int64_t hb_t)
@@ -68,7 +84,11 @@ namespace oceanbase
     void ObServerStatus::set_hb_time_ms(int64_t hb_t)
     {
       last_hb_time_ms_ = hb_t;
-      //TBSYS_LOG(DEBUG,"last_hb_time_ms_:%ld",last_hb_time_ms_);
+    }
+
+    void ObServerStatus::set_lms(bool lms)
+    {
+      lms_ = lms;
     }
 
     bool ObServerStatus::is_alive(int64_t now, int64_t lease) const
@@ -78,8 +98,12 @@ namespace oceanbase
 
     bool ObServerStatus::is_ms_alive(int64_t now, int64_t lease) const
     {
-      // TBSYS_LOG(DEBUG,"now:%ld,last_hb_time_ms_:%ld,lease:%ld",now,last_hb_time_ms_,lease);
       return now - last_hb_time_ms_ < lease;
+    }
+
+    bool ObServerStatus::is_lms() const
+    {
+      return lms_;
     }
 
     const char* ObServerStatus::get_cs_stat_str() const
@@ -102,21 +126,24 @@ namespace oceanbase
         case STATUS_REPORTED:
           ret = "REPORTED";
           break;
+        case STATUS_SHUTDOWN:
+          ret = "SHUTDOWN";
+          break;
         default:
           break;
       }
       return ret;
     }
-    
+
     void ObServerStatus::dump(const int32_t index) const
     {
-      char ip_str[OB_IP_STR_BUFF];
-      server_.to_string(ip_str,OB_IP_STR_BUFF);
-      TBSYS_LOG(INFO, "index = %d server %s  status %d ms_status %d last_hb %ld port_cs %d port_ms %d hb_ms=%d",
-                index, ip_str, status_, ms_status_,last_hb_time_, port_cs_, port_ms_, last_hb_time_ms_);
+      TBSYS_LOG(INFO, "index = %d server %s  status %d ms_status %d last_hb %ld "
+          "port_cs %d port_ms %d port_ms_sql %d hb_ms=%ld register=%ld",
+          index, to_cstring(server_), status_, ms_status_, last_hb_time_,
+          port_cs_, port_ms_, port_ms_sql_, last_hb_time_ms_, register_time_);
       disk_info_.dump();
     }
-    
+
     DEFINE_SERIALIZE(ObServerStatus)
     {
       int ret = 0;
@@ -143,6 +170,10 @@ namespace oceanbase
       }
       if (OB_SUCCESS == ret)
       {
+        ret = serialization::encode_vi32(buf, buf_len, tmp_pos, port_ms_sql_);
+      }
+      if (OB_SUCCESS == ret)
+      {
         ret = server_.serialize(buf, buf_len, tmp_pos);
       }
       if (OB_SUCCESS == ret)
@@ -155,6 +186,7 @@ namespace oceanbase
       }
       return ret;
     }
+
     DEFINE_DESERIALIZE(ObServerStatus)
     {
       int ret = OB_SUCCESS;
@@ -169,8 +201,8 @@ namespace oceanbase
         ret = serialization::decode_vi64(buf, data_len, tmp_pos, &tmp_status);
         if (OB_SUCCESS == ret)
         {
-          status_ = tmp_status & 0xffffffff;
-          ms_status_ = tmp_status >> 32;
+          status_ = static_cast<EStatus>(tmp_status & 0xffffffff);
+          ms_status_ = static_cast<EStatus>(tmp_status >> 32);
         }
       }
       if (OB_SUCCESS == ret)
@@ -180,6 +212,10 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         ret = serialization::decode_vi32(buf, data_len, tmp_pos, &port_ms_);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = serialization::decode_vi32(buf, data_len, tmp_pos, &port_ms_sql_);
       }
       if (OB_SUCCESS == ret)
       {
@@ -206,10 +242,12 @@ namespace oceanbase
       len += serialization::encoded_length_vi64(tmp_status);
       len += serialization::encoded_length_vi32(port_cs_);
       len += serialization::encoded_length_vi32(port_ms_);
+      len += serialization::encoded_length_vi32(port_ms_sql_);
       len += server_.get_serialize_size();
       len += disk_info_.get_serialize_size();
       return len;
     }
+
     ObChunkServerManager::ObChunkServerManager()
     {
       servers_.init(MAX_SERVER_COUNT, data_holder_);
@@ -217,6 +255,7 @@ namespace oceanbase
     ObChunkServerManager::~ObChunkServerManager()
     {
     }
+
     ObChunkServerManager::iterator ObChunkServerManager::begin()
     {
       return servers_.get_base_address();
@@ -227,13 +266,17 @@ namespace oceanbase
     }
     ObChunkServerManager::iterator ObChunkServerManager::end()
     {
-      return servers_.get_base_address() + 
+      return servers_.get_base_address() +
         servers_.get_array_index();
     }
     ObChunkServerManager::const_iterator ObChunkServerManager::end() const
     {
-      return servers_.get_base_address() + 
+      return servers_.get_base_address() +
         servers_.get_array_index();
+    }
+    int64_t ObChunkServerManager::size() const
+    {
+      return servers_.get_array_index();
     }
     ObChunkServerManager::iterator ObChunkServerManager::find_by_ip(const ObServer& server)
     {
@@ -247,7 +290,7 @@ namespace oceanbase
         else
         {
           //assert(servers_.at(i) != NULL);
-          if (!server.compare_by_ip((servers_.at(i))->server_) && !(servers_.at(i))->server_.compare_by_ip(server)) 
+          if (!server.compare_by_ip((servers_.at(i))->server_) && !(servers_.at(i))->server_.compare_by_ip(server))
           {
             res = servers_.at(i);
             break;
@@ -269,7 +312,7 @@ namespace oceanbase
         else
         {
           //assert(servers_.at(i) != NULL);
-          if (!server.compare_by_ip((servers_.at(i))->server_) && !(servers_.at(i))->server_.compare_by_ip(server)) 
+          if (!server.compare_by_ip((servers_.at(i))->server_) && !(servers_.at(i))->server_.compare_by_ip(server))
           {
             res = servers_.at(i);
             break;
@@ -278,71 +321,104 @@ namespace oceanbase
       }
       return res;
     }
+    ObChunkServerManager::const_iterator ObChunkServerManager::get_serving_ms() const
+    {
+      const_iterator it = end();
+      for (it = begin(); end() != it; ++it)
+      {
+        if (it->ms_status_ == ObServerStatus::STATUS_SERVING
+            && it->port_ms_ != 0)
+        {
+          TBSYS_LOG(DEBUG, "select serving ms port: [%d], server: [%s]",
+              it->port_ms_, to_cstring(it->server_));
+          break;
+        }
+      }
+      return it;
+    }
     /*
      * root server will call this when a server regist to root or echo heart beat
      * @return 1 new serve 2 relive server 0 heartbt
      */
-    int ObChunkServerManager::receive_hb(const ObServer& server, int64_t time_stamp, bool is_merge_server, bool is_regist)
+    int ObChunkServerManager::receive_hb(const ObServer& server, const int64_t time_stamp,
+        const bool is_merge_server, const bool is_listen_ms, const int32_t sql_port, const bool is_regist)
     {
       int res = 0;
       iterator it = find_by_ip(server);
-      if (it != end() )
+      if (it != end())
       {
-        if (!is_merge_server) 
+        if (is_merge_server)
         {
-          TBSYS_LOG(DEBUG,"receive hb from chunkserver, ts=%ld ms=%d reg=%d", 
-                    time_stamp, is_merge_server, is_regist);
-          it->set_hb_time(time_stamp);
-          if(it->status_ == ObServerStatus::STATUS_DEAD || is_regist)
+          TBSYS_LOG(DEBUG, "receive hb from mergeserver, ts=%ld is_regist=%d", time_stamp, is_regist);
+          it->set_hb_time_ms(time_stamp);
+          if (it->ms_status_ == ObServerStatus::STATUS_DEAD || is_regist)
           {
-            it->status_ = ObServerStatus::STATUS_WAITING_REPORT;
-            it->server_.set_port(server.get_port());
-            if (it->port_cs_ == server.get_port() ) 
+            res = 2;
+            TBSYS_LOG(TRACE, "receive realive ms heartbeat, or new ms register. server=%s", server.to_cstring());
+            it->register_time_ = time_stamp;
+            it->ms_status_ = ObServerStatus::STATUS_SERVING;
+            it->port_ms_ = server.get_port();
+            it->port_ms_sql_ = sql_port;
+            it->lms_ = is_listen_ms;
+            if ((it->port_ms_sql_ != 0) && (it->port_ms_sql_ != sql_port))
             {
-              res = 2;
-            }
-            else
-            {
-              it->port_cs_ = server.get_port();
-              res = 1;
+              TBSYS_LOG(ERROR, "check alive mergeserver port modified:old[%d], new[%d], server[%s], listener[%d]",
+                  it->port_ms_sql_, sql_port, server.to_cstring(), is_listen_ms);
             }
           }
         }
         else
         {
-          TBSYS_LOG(DEBUG,"receive hb from mergeserver, ts=%ld ms=%d reg=%d", 
-                    time_stamp, is_merge_server, is_regist);
-          it->port_ms_ = server.get_port();
-          it->ms_status_ = ObServerStatus::STATUS_SERVING;
-          it->set_hb_time_ms(time_stamp);
+          TBSYS_LOG(DEBUG, "receive hb from chunkserver, ts=%ld is_regist=%d", time_stamp, is_regist);
+          it->set_hb_time(time_stamp);
+          if (it->status_ == ObServerStatus::STATUS_DEAD || is_regist)
+          {
+            res = 2;
+            TBSYS_LOG(TRACE, "receive realive cs heartbeat, or new cs register. server=%s", server.to_cstring());
+            it->register_time_ = time_stamp;
+            it->status_ = ObServerStatus::STATUS_WAITING_REPORT;
+            it->server_.set_port(server.get_port());
+            it->port_cs_ = server.get_port();
+            it->lms_ = false;
+            if ((it->port_cs_ != 0) && (it->port_cs_ != server.get_port()))
+            {
+              TBSYS_LOG(ERROR, "check alive chunkserver port modified:old[%d], new[%d], server[%s]",
+                  it->port_cs_, server.get_port(), server.to_cstring());
+            }
+          }
         }
       }
       else
       {
         // new server entry
-        res = 1;
+        res = 2;
         ObServerStatus tmp_server_status;
         tmp_server_status.server_ = server;
-        if (is_merge_server) 
+        if (is_merge_server)
         {
-          TBSYS_LOG(DEBUG,"receive hb from mergeserver, ts=%ld ms=%d reg=%d", 
-                    time_stamp, is_merge_server, is_regist);
+          TBSYS_LOG(TRACE, "receive hb from new mergeserver, server=%s ts=%ld is_lms=%d is_regist=%d",
+              server.to_cstring(), time_stamp, is_listen_ms, is_regist);
           tmp_server_status.port_ms_ = server.get_port();
+          tmp_server_status.port_ms_sql_ = sql_port;
           tmp_server_status.ms_status_ = ObServerStatus::STATUS_SERVING;
           tmp_server_status.set_hb_time_ms(time_stamp);
+          tmp_server_status.set_lms(is_listen_ms);
         }
         else
         {
-          TBSYS_LOG(DEBUG,"receive hb from chunkserver, ts=%ld ms=%d reg=%d", 
-                    time_stamp, is_merge_server, is_regist);
+          TBSYS_LOG(TRACE, "receive hb from new chunkserver, server=%s ts=%ld is_regist=%d",
+              server.to_cstring(), time_stamp, is_regist);
           tmp_server_status.port_cs_ = server.get_port();
           tmp_server_status.set_hb_time(time_stamp);
+          tmp_server_status.set_lms(false);
           tmp_server_status.status_ = ObServerStatus::STATUS_WAITING_REPORT;
+          tmp_server_status.register_time_ = time_stamp;
         }
         res = servers_.push_back(tmp_server_status);
       }
       return res;
     }
+
     int ObChunkServerManager::update_disk_info(const common::ObServer& server, const ObServerDiskInfo& disk_info)
     {
       int ret = OB_SUCCESS;
@@ -353,16 +429,14 @@ namespace oceanbase
       }
       else
       {
-        char msg[30];
-        server.to_string(msg,30);
-        TBSYS_LOG(ERROR, " not find info about server %s", msg);
+        TBSYS_LOG(ERROR, " not find info about server %s", to_cstring(server));
         ret = OB_ERROR;
       }
       return ret;
     }
     int ObChunkServerManager::get_array_length() const
     {
-      return servers_.get_array_index();
+      return static_cast<int32_t>(servers_.get_array_index());
     }
     ObServerStatus* ObChunkServerManager::get_server_status(const int32_t index)
     {
@@ -371,7 +445,7 @@ namespace oceanbase
       {
         ret = data_holder_ + index;
       }
-      else 
+      else
       {
         TBSYS_LOG(ERROR, "never should reach this, idx=%d", index);
       }
@@ -384,14 +458,77 @@ namespace oceanbase
       {
         ret = data_holder_ + index;
       }
-      else 
+      else
       {
         TBSYS_LOG(ERROR, "never should reach this");
       }
       return ret;
     }
+
+    int ObChunkServerManager::get_server_index(const common::ObServer &server, int32_t &index) const
+    {
+      int ret = OB_SUCCESS;
+      const_iterator it = find_by_ip(server);
+      if (end() != it)
+      {
+        index = static_cast<int32_t>(it - begin());
+      }
+      else
+      {
+        index = OB_INVALID_INDEX;
+        ret = OB_ENTRY_NOT_EXIST;
+      }
+      return ret;
+    }
+
+    int32_t ObChunkServerManager::get_alive_server_count(const bool chunkserver) const
+    {
+      int32_t count = 0;
+      ObChunkServerManager::const_iterator it;
+      for (it = begin(); end() != it; ++it)
+      {
+        if (true == chunkserver)
+        {
+          if (ObServerStatus::STATUS_DEAD != it->status_)
+          {
+            ++count;
+          }
+        }
+        else
+        {
+          if (ObServerStatus::STATUS_DEAD != it->ms_status_)
+          {
+            ++count;
+          }
+        }
+      }
+      return count;
+    }
+
+    int ObChunkServerManager::get_next_alive_ms(int32_t & index, ObServer & server) const
+    {
+      int32_t count = size();
+      const ObServerStatus * st = NULL;
+      int32_t i = 0;
+      for (i = 0; i < count; ++i)
+      {
+        st = get_server_status(index);
+        if ((st != NULL) && (st->ms_status_ != ObServerStatus::STATUS_DEAD))
+        {
+          server = st->server_;
+          server.set_port(st->port_ms_);
+          break;
+        }
+        else
+        {
+          index = (index + 1) % count;
+        }
+      }
+      return (i == count) ? OB_MS_NOT_EXIST : OB_SUCCESS;
+    }
+
     common::ObServer ObChunkServerManager::get_cs(const int32_t index) const
-    { 
+    {
       ObServer server;
       const ObServerStatus* st = get_server_status(index);
       if (st != NULL)
@@ -401,23 +538,8 @@ namespace oceanbase
       }
       return server;
     }
-    bool ObChunkServerManager::can_migrate_in(const int32_t index, const int64_t occupy_size, 
-        const ObBalancePrameter* prameter) const
-    {
-      bool ret = false;
-      if (index < servers_.get_array_index() && index >= 0 && prameter != NULL)
-      {
-        int64_t new_used = data_holder_[index].disk_info_.get_used() + occupy_size;
-        if (data_holder_[index].disk_info_.get_capacity() > 0 &&
-            prameter->disk_trigger_level_ > (int)((new_used * 100)/data_holder_[index].disk_info_.get_capacity() ))
-        {
-          ret = true;
-        }
-      }
-      return ret;
-    }
 
-    void ObChunkServerManager::reset_balance_info(int32_t max_migrate_out_per_cs)
+    void ObChunkServerManager::reset_balance_info()
     {
       int32_t cs_num = 0;
       ObChunkServerManager::iterator it;
@@ -429,12 +551,14 @@ namespace oceanbase
           cs_num++;
         }
       }
-      migrate_infos_.reset(cs_num, max_migrate_out_per_cs);
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      migrate_infos_.reset();
     }
-    
-    void ObChunkServerManager::reset_balance_info_for_table(int32_t &cs_num)
+
+    void ObChunkServerManager::reset_balance_info_for_table(int32_t &cs_num, int32_t &shutdown_num)
     {
       cs_num = 0;
+      shutdown_num = 0;
       ObChunkServerManager::iterator it;
       for (it = begin(); end() != it; ++it)
       {
@@ -442,58 +566,194 @@ namespace oceanbase
         {
           it->balance_info_.reset_for_table();
           cs_num++;
+          if (ObServerStatus::STATUS_SHUTDOWN == it->status_)
+          {
+            shutdown_num++;
+          }
         }
       }
     }
-    
+
     bool ObChunkServerManager::is_migrate_infos_full() const
     {
+      tbsys::CRLockGuard guard(migrate_infos_lock_);
       return migrate_infos_.is_full();
     }
 
-    int ObChunkServerManager::add_migrate_info(ObServerStatus& cs, const common::ObRange &range, int32_t dest_cs_idx)
+    int64_t ObChunkServerManager::get_migrate_num() const
     {
-      return cs.balance_info_.migrate_to_.add_migrate_info(range, dest_cs_idx, migrate_infos_);
+      tbsys::CRLockGuard guard(migrate_infos_lock_);
+      return migrate_infos_.get_used_count();
     }
-    
-    int ObChunkServerManager::add_copy_info(ObServerStatus& cs, const common::ObRange &range, int32_t dest_cs_idx)
+
+    int64_t ObChunkServerManager::get_max_migrate_num() const
     {
-      return cs.balance_info_.migrate_to_.add_copy_info(range, dest_cs_idx, migrate_infos_);
+      return migrate_infos_.get_size();
     }
-    
+
+    void ObChunkServerManager::set_max_migrate_num(int64_t size)
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      migrate_infos_.set_size(size);
+    }
+
     void ObChunkServerManager::set_server_down(iterator& it)
     {
       if (it >= begin() && it < end())
       {
         if (TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_INFO)
         {
-          char server_str[OB_IP_STR_BUFF];
           ObServer tmp_server = it->server_;
           tmp_server.set_port(it->port_cs_);
-          tmp_server.to_string(server_str, OB_IP_STR_BUFF);
-          TBSYS_LOG(INFO, "chunkserver %s is down", server_str);
+          TBSYS_LOG(INFO, "chunkserver %s is down", to_cstring(tmp_server));
         }
         it->status_ = ObServerStatus::STATUS_DEAD;
-        it->balance_info_.reset();
+        //it->balance_info_.reset();
       }
       return ;
     }
-    
+
     void ObChunkServerManager::set_server_down_ms(iterator& it)
     {
       if (it >= begin() && it < end())
       {
         if (TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_INFO)
         {
-          char server_str[OB_IP_STR_BUFF];
           ObServer tmp_server = it->server_;
           tmp_server.set_port(it->port_ms_);
-          tmp_server.to_string(server_str, OB_IP_STR_BUFF);
-          TBSYS_LOG(INFO, "mergeserver %s is down", server_str);
+          TBSYS_LOG(INFO, "mergeserver %s is down", to_cstring(tmp_server));
         }
         it->ms_status_ = ObServerStatus::STATUS_DEAD;
       }
       return ;
+    }
+
+    void ObChunkServerManager::cancel_restart_all_cs()
+    {
+      for(iterator it = begin(); it != end(); ++it)
+      {
+        it->wait_restart_ = false;
+      }
+    }
+
+    void ObChunkServerManager::restart_all_cs()
+    {
+      for(iterator it = begin(); it != end(); ++it)
+      {
+        it->wait_restart_ = true;
+      }
+    }
+
+    int ObChunkServerManager::shutdown_cs(const common::ObArray<common::ObServer> &servers, enum ShutdownOperation op)
+    {
+      int ret = OB_SUCCESS;
+      ObServer server;
+      ObChunkServerManager::iterator it;
+      for (int i = 0; i < servers.count(); ++i)
+      {
+        if (OB_SUCCESS != (ret = servers.at(i, server)))
+        {
+          TBSYS_LOG(ERROR, "fatal error=%d", ret);
+          break;
+        }
+        else
+        {
+          if (end() == (it = this->find_by_ip(server)))
+          {
+            TBSYS_LOG(WARN, "server not exist, addr=%s", server.to_cstring());
+            ret = OB_ENTRY_NOT_EXIST;
+            break;
+          }
+          else if (ObServerStatus::STATUS_SHUTDOWN == it->status_)
+          {
+            TBSYS_LOG(INFO, "already shutdown, addr=%s", it->server_.to_cstring());
+            continue;
+          }
+          else if (ObServerStatus::STATUS_SERVING != it->status_)
+          {
+            TBSYS_LOG(WARN, "server not serving, addr=%s stat=%d", server.to_cstring(), it->status_);
+            ret = OB_ENTRY_NOT_EXIST;
+            break;
+          }
+          else
+          {
+            if(SHUTDOWN == op)
+            {
+              TBSYS_LOG(INFO, "shutdown server=%s", it->server_.to_cstring());
+              it->status_ = ObServerStatus::STATUS_SHUTDOWN;
+            }
+            else if(RESTART == op)
+            {
+              TBSYS_LOG(INFO, "restart server=%s", it->server_.to_cstring());
+              it->wait_restart_ = true;
+            }
+            else
+            {
+              ret = OB_NOT_SUPPORTED;
+              TBSYS_LOG(WARN, "not supported shutdown operation[%d]", op);
+            }
+          }
+        }
+      } // end for
+      return ret;
+    }
+
+    int ObChunkServerManager::cancel_shutdown_cs(const common::ObArray<common::ObServer> &servers, enum ShutdownOperation op)
+    {
+      int ret = OB_SUCCESS;
+      ObServer server;
+      ObChunkServerManager::iterator it;
+      for (int i = 0; i < servers.count(); ++i)
+      {
+        if (OB_SUCCESS != (ret = servers.at(i, server)))
+        {
+          TBSYS_LOG(ERROR, "fatal error=%d", ret);
+          break;
+        }
+        else
+        {
+          if (end() == (it = this->find_by_ip(server)))
+          {
+            TBSYS_LOG(WARN, "server not exist, addr=%s", server.to_cstring());
+            ret = OB_ENTRY_NOT_EXIST;
+            break;
+          }
+          else if (ObServerStatus::STATUS_SHUTDOWN == it->status_)
+          {
+            switch(op)
+            {
+              case SHUTDOWN:
+                TBSYS_LOG(INFO, "cancel shutting down server=%s", it->server_.to_cstring());
+                it->status_ = ObServerStatus::STATUS_SERVING;
+                break;
+              case RESTART:
+              default:
+                TBSYS_LOG(INFO, "cancel restart server=%s", it->server_.to_cstring());
+                it->wait_restart_ = false;
+                break;
+            }
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "not shutting down, addr=%s", it->server_.to_cstring());
+          }
+        }
+      } // end for
+      return ret;
+    }
+
+    bool ObChunkServerManager::has_shutting_down_server() const
+    {
+      bool ret = false;
+      for (const_iterator it = begin(); end() != it; ++it)
+      {
+        if (ObServerStatus::STATUS_SHUTDOWN == it->status_)
+        {
+          ret = true;
+          break;
+        }
+      }
+      return ret;
     }
 
     ObChunkServerManager& ObChunkServerManager::operator= (const ObChunkServerManager& other)
@@ -505,7 +765,7 @@ namespace oceanbase
       }
       return *this;
     }
-    
+
     int ObChunkServerManager::write_to_file(const char* filename)
     {
       int ret = OB_SUCCESS;
@@ -526,7 +786,7 @@ namespace oceanbase
           total_size += data_holder_[i].get_serialize_size();
         }
 
-        char* data_buffer = static_cast<char*>(ob_malloc(total_size));
+        char* data_buffer = static_cast<char*>(ob_malloc(total_size, ObModIds::OB_RS_SERVER_MANAGER));
         if (data_buffer == NULL)
         {
           ret = OB_ERROR;
@@ -556,12 +816,12 @@ namespace oceanbase
           common::ObRecordHeader header;
 
           header.set_magic_num(CHUNK_SERVER_MAGIC);
-          header.header_length_ = header_length;
+          header.header_length_ = static_cast<int16_t>(header_length);
           header.version_ = 0;
           header.reserved_ = 0;
 
-          header.data_length_ = total_size;
-          header.data_zlength_ = total_size;
+          header.data_length_ = static_cast<int32_t>(total_size);
+          header.data_zlength_ = static_cast<int32_t>(total_size);
 
           header.data_checksum_ = common::ob_crc64(data_buffer, total_size);
           header.set_header_checksum();
@@ -625,7 +885,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       cs_num = 0;
       ms_num = 0;
-      
+
       if (filename == NULL)
       {
         ret = OB_INVALID_ARGUMENT;
@@ -671,7 +931,7 @@ namespace oceanbase
       if (ret == OB_SUCCESS)
       {
         size = header.data_length_;
-        data_buffer = static_cast<char*>(ob_malloc(size));
+        data_buffer = static_cast<char*>(ob_malloc(size, ObModIds::OB_RS_SERVER_MANAGER));
         if (data_buffer == NULL)
         {
           ret = OB_ERROR;
@@ -717,12 +977,12 @@ namespace oceanbase
           if (ret == OB_SUCCESS)
           {
             if (ObServerStatus::STATUS_DEAD != server.status_
-                || 0 < server.port_cs_)
+                && 0 < server.port_cs_)
             {
               cs_num++;
             }
             if (ObServerStatus::STATUS_DEAD != server.ms_status_
-                || 0 < server.port_ms_)
+                && 0 < server.port_ms_)
             {
               ms_num++;
             }
@@ -762,7 +1022,7 @@ namespace oceanbase
             break;
         }
       }
-      if (OB_SUCCESS == ret) 
+      if (OB_SUCCESS == ret)
       {
         pos = tmp_pos;
       }
@@ -790,7 +1050,7 @@ namespace oceanbase
     }
     DEFINE_GET_SERIALIZE_SIZE(ObChunkServerManager)
     {
-      int total_size = 0;
+      int64_t total_size = 0;
       int64_t size = servers_.get_array_index();
       total_size += serialization::encoded_length_vi64(size);
       for (int64_t i = 0; i < size; ++i)
@@ -817,7 +1077,7 @@ namespace oceanbase
       }
       return ret;
     }
-    
+
     int ObChunkServerManager::serialize_ms(const ObServerStatus *it, char* buf, const int64_t buf_len, int64_t& pos) const
     {
       int ret = OB_SUCCESS;
@@ -854,7 +1114,7 @@ namespace oceanbase
       else
       {
         int i = 0;
-        for (it = begin(); it != end() && i < cs_num; ++it, ++i)
+        for (it = begin(); it != end() && i < cs_num; ++it)
         {
           if (ObServerStatus::STATUS_DEAD != it->status_)
           {
@@ -862,12 +1122,16 @@ namespace oceanbase
             {
               break;
             }
+            else
+            {
+              ++i;
+            }
           }
         }
       }
       return ret;
     }
-    
+
     int ObChunkServerManager::serialize_ms_list(char* buf, const int64_t buf_len, int64_t& pos) const
     {
       int ret = OB_SUCCESS;
@@ -875,7 +1139,8 @@ namespace oceanbase
       const ObServerStatus* it = NULL;
       for (it = begin(); it != end(); ++it)
       {
-        if (ObServerStatus::STATUS_DEAD != it->ms_status_)
+        if (ObServerStatus::STATUS_DEAD != it->ms_status_
+            && !it->lms_)
         {
           ms_num++;
         }
@@ -887,20 +1152,71 @@ namespace oceanbase
       else
       {
         int i = 0;
-        for (it = begin(); it != end() && i < ms_num; ++it, ++i)
+        for (it = begin(); it != end() && i < ms_num; ++it)
         {
-          if (ObServerStatus::STATUS_DEAD != it->ms_status_)
+          if (ObServerStatus::STATUS_DEAD != it->ms_status_
+              && !it->lms_)
           {
             if (OB_SUCCESS != (ret = serialize_ms(it, buf, buf_len, pos)))
             {
               break;
+            }
+            else
+            {
+              ++i;
             }
           }
         }
       }
       return ret;
     }
+    int ObChunkServerManager::get_ms_port(const ObServer& server, int32_t &port)const
+    {
+      int ret = OB_ERROR;
+      for (int64_t i = 0; i < servers_.get_array_index(); i++)
+      {
+        if (servers_.at(i) == NULL)
+        {
+          TBSYS_LOG(ERROR, "never reach this, bugs");
+        }
+        else
+        {
+          if (!server.compare_by_ip((servers_.at(i))->server_) && !(servers_.at(i))->server_.compare_by_ip(server))
+          {
+            ret = OB_SUCCESS;
+            port = servers_.at(i)->port_ms_;
+            break;
+          }
+        }
+      }
+      return ret;
+    }
 
+    int ObChunkServerManager::add_migrate_info(const common::ObServer& src_server,
+        const common::ObServer& dest_server, const ObDataSourceDesc& data_source_desc)
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      return migrate_infos_.add_migrate_info(src_server, dest_server, data_source_desc);
+    }
+
+    int ObChunkServerManager::free_migrate_info(const common::ObNewRange& range, const common::ObServer& src_server,
+        const common::ObServer& dest_server)
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      return migrate_infos_.free_migrate_info(range, src_server, dest_server);
+    }
+
+    bool ObChunkServerManager::check_migrate_info_timeout(int64_t timeout, common::ObServer& src_server,
+            common::ObServer& dest_server, common::ObDataSourceDesc::ObDataSourceType& type)
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      return migrate_infos_.check_migrate_info_timeout(timeout, src_server, dest_server, type);
+    }
+
+    void ObChunkServerManager::print_migrate_info()
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      migrate_infos_.print_migrate_info();
+    }
   }
 }
-

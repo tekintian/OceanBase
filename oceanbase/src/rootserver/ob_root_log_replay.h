@@ -1,19 +1,15 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  * Version: $Id$
  *
- * ob_root_log_replay.h for ...
- *
  * Authors:
- *   qushan <qushan@taobao.com>
- *
+ *   ruohai <ruohai@taobao.com>
  */
-
 
 #ifndef OCEANBASE_ROOTSERVER_OB_ROOT_LOG_REPLAY
 #define OCEANBASE_ROOTSERVER_OB_ROOT_LOG_REPLAY
@@ -34,14 +30,16 @@ namespace oceanbase
         ~ObRootLogReplay();
 
       public:
+        void wait_replay(ObLogCursor& end_cursor);
         void set_log_manager(ObRootLogManager* log_manage);
         int replay(common::LogCommand cmd, uint64_t seq, const char* log_data, const int64_t data_len);
+        void run(tbsys::CThread* thread, void* arg);
     
       private:
         ObRootLogManager* log_manager_;
+        ObLogCursor master_end_cursor_;
     };
   } /* rootserver */
 } /* oceanbase */
 
 #endif /* end of include guard: OCEANBASE_ROOTSERVER_OB_ROOT_LOG_REPLAY */
-

@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation. 
  *
- * ./ob_compressor.cpp for ...
+ * ob_compressor.h is for what ...
  *
  * Authors:
- *   qushan <qushan@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #include <stdlib.h>
@@ -78,5 +76,4 @@ void destroy_compressor(ObCompressor *compressor)
     }
   }
 }
-
 

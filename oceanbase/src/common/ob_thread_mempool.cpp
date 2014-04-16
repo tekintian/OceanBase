@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_thread_mempool.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_thread_mempool.cpp / common / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2011-01-13 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #include "tblog.h"
 #include "ob_thread_mempool.h"
 #include "ob_atomic.h"
@@ -62,7 +66,7 @@ namespace oceanbase
         inc_ref_cnt();
         if (WARN_ALLOC_NUM < get_ref_cnt())
         {
-          TBSYS_LOG(WARN, "maybe alloc too many memory from mem_list=%p hold_num=%ld free_num=%ld",
+          TBSYS_LOG(WARN, "maybe alloc too many memory from mem_list=%p hold_num=%ld free_num=%d",
                     this, get_ref_cnt(), size_);
         }
       }
@@ -153,7 +157,7 @@ namespace oceanbase
       }
       else
       {
-        fixed_size_ = fixed_size + sizeof(ObMemList*);
+        fixed_size_ = static_cast<int32_t>(fixed_size + sizeof(ObMemList*));
         max_free_num_ = max_free_num;
       }
       return ret;
@@ -305,5 +309,4 @@ namespace oceanbase
     }
   }
 }
-
 

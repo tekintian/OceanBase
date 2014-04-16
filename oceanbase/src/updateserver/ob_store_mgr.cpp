@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_store_mgr.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_store_mgr.cpp updateserver / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2011-03-16 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #include "common/ob_define.h"
 #include "ob_store_mgr.h"
 
@@ -155,7 +159,7 @@ namespace oceanbase
     {
       StoreNode *ret = NULL;
       if ((uint64_t)all_store_.size() <= store_handle
-          || NULL == (ret = all_store_[store_handle]))
+          || NULL == (ret = all_store_[static_cast<int32_t>(store_handle)]))
       {
         TBSYS_LOG(WARN, "invalid store_handle=%lu all_store_size=%d", store_handle, all_store_.size());
       }
@@ -205,9 +209,9 @@ namespace oceanbase
         }
         // 检查剩余空间容量
         else if (get_free(store_node->path) <= disk_reserved_space_
-                || get_free(store_node->path) <= static_cast<int64_t>((get_total(store_node->path) * disk_reserved_ratio_)))
+                || get_free(store_node->path) <= static_cast<int64_t>((static_cast<double>(get_total(store_node->path)) * disk_reserved_ratio_)))
         {
-          TBSYS_LOG(WARN, "free space not enough store_node=%p path=[%s] free=%ld total=%ld disk_reserved_ratio=%lf",
+          TBSYS_LOG(ERROR, "free space not enough store_node=%p path=[%s] free=%ld total=%ld disk_reserved_ratio=%lf",
                     store_node, store_node->path, get_free(store_node->path), get_total(store_node->path), disk_reserved_ratio_);
         }
         else
@@ -447,8 +451,7 @@ namespace oceanbase
       }
       if (0 == store_dev_.size())
       {
-        TBSYS_LOG(ERROR, "not valid store will kill self");
-        // TODO kill self
+        TBSYS_LOG(ERROR, "not valid store");
       }
     }
 
@@ -593,6 +596,10 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "build trash dir fail store=[%s]", path);
       }
+      else if (!build_dir(path, BYPASS_DIR))
+      {
+        TBSYS_LOG(WARN, "build bypass dir fail store=[%s]", path);
+      }
       else
       {
         dev_t dev_no = StoreMgr::get_dev(path);
@@ -681,6 +688,4 @@ namespace oceanbase
     }
   }
 }
-
-
 

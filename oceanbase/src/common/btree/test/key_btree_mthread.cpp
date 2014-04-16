@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./test/key_btree_mthread.cpp for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #include <limits.h>
 #include <test_key.h>
 #include <key_btree.h>
@@ -195,4 +180,3 @@ namespace oceanbase
 
   } // end namespace common
 } // end namespace oceanbase
-

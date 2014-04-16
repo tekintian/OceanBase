@@ -1,24 +1,24 @@
 /*
  *   (C) 2007-2010 Taobao Inc.
- *   
+ *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License version 2 as
  *   published by the Free Software Foundation.
- *       
- *         
- *         
- *   Version: 0.1 
- *           
+ *
+ *
+ *
+ *   Version: 0.1
+ *
  *   Authors:
  *      qushan <qushan@taobao.com>
- *               
+ *
  */
 #include <algorithm>
 #include <tbsys.h>
 
-namespace oceanbase 
-{ 
-  namespace common 
+namespace oceanbase
+{
+  namespace common
   {
 
 
@@ -27,15 +27,32 @@ namespace oceanbase
     // class ObVector<T, Allocator> implements
     // --------------------------------------------------------
     template <typename T, typename Allocator>
-      ObVector<T, Allocator>::ObVector()
+      ObVector<T, Allocator>::ObVector(Allocator * alloc)
       : mem_begin_(NULL), mem_end_(NULL), mem_end_of_storage_(NULL)
       {
+        if(NULL == alloc)
+        {
+          pallocator_ = &default_allocator_;
+        }
+        else
+        {
+          pallocator_ = alloc;
+        }
+		pallocator_->set_mod_id(ObModIds::VECTOR);
       }
 
     template <typename T, typename Allocator>
-      ObVector<T, Allocator>::ObVector(int32_t size)
+      ObVector<T, Allocator>::ObVector(int32_t size, Allocator * alloc)
       : mem_begin_(NULL), mem_end_(NULL), mem_end_of_storage_(NULL)
       {
+        if(NULL == alloc)
+        {
+          pallocator_ = &default_allocator_;
+        }
+        else
+        {
+          pallocator_ = alloc;
+        }
         expand(size);
       }
 
@@ -50,7 +67,7 @@ namespace oceanbase
       {
         if (mem_begin_)
         {
-          allocator_.free(mem_begin_);
+          pallocator_->free(mem_begin_);
           mem_begin_ = NULL;
           mem_end_ = NULL;
           mem_end_of_storage_ = NULL;
@@ -66,13 +83,18 @@ namespace oceanbase
     template <typename T, typename Allocator>
       void ObVector<T, Allocator>::clear()
       {
-        mem_end_ = mem_begin_;
+        pallocator_->free(mem_begin_);
+        if(pallocator_ == &default_allocator_)
+        {
+          pallocator_->free();
+        }
+        mem_end_ = mem_begin_ = mem_end_of_storage_ = NULL;
       }
 
     /**
      * expand %size bytes memory when buffer not enough.
      * copy origin memory content to new buffer
-     * @return 
+     * @return
      * <  0  allocate new memory failed
      * == 0  no need expand
      * == %size  expand succeed.
@@ -88,7 +110,7 @@ namespace oceanbase
           iterator new_mem = alloc_array(size);
           if (new_mem)
           {
-            if (old_size) 
+            if (old_size)
             {
               copy(new_mem, mem_begin_, mem_end_);
             }
@@ -113,7 +135,7 @@ namespace oceanbase
       typename ObVector<T, Allocator>::iterator ObVector<T, Allocator>::alloc_array(const int32_t size)
       {
         iterator ptr = reinterpret_cast<iterator>
-          (allocator_.alloc(size * sizeof(value_type)));
+          (pallocator_->alloc(size * sizeof(value_type)));
         return ptr;
       }
 
@@ -133,16 +155,16 @@ namespace oceanbase
      * @param [in] dest: move dest memory
      * @param [in] begin: source memory start pointer
      * @param [in] end: source memory end pointer
-     * @return 
+     * @return
      */
     template <typename T, typename Allocator>
-      typename ObVector<T, Allocator>::iterator ObVector<T, Allocator>::move(iterator dest, 
+      typename ObVector<T, Allocator>::iterator ObVector<T, Allocator>::move(iterator dest,
           const_iterator begin, const_iterator end)
       {
         assert(dest);
         assert(end >= begin);
-        int32_t n = end - begin;
-        if (n > 0) 
+        int32_t n = static_cast<int32_t>(end - begin);
+        if (n > 0)
           ::memmove(dest, begin, n * sizeof(value_type));
         return dest + n;
       }
@@ -151,13 +173,13 @@ namespace oceanbase
      * [dest, x] && [begin, end] cannot be overlap
      */
     template <typename T, typename Allocator>
-      typename ObVector<T, Allocator>::iterator ObVector<T, Allocator>::copy(iterator dest, 
+      typename ObVector<T, Allocator>::iterator ObVector<T, Allocator>::copy(iterator dest,
           const_iterator begin, const_iterator end)
       {
         assert(dest);
         assert(end >= begin);
-        int32_t n = end - begin;
-        if (n > 0) 
+        int32_t n = static_cast<int32_t>(end - begin);
+        if (n > 0)
           ::memcpy(dest, begin, n * sizeof(value_type));
         return dest + n;
       }
@@ -175,6 +197,39 @@ namespace oceanbase
           iterator new_end_pos = move(pos, pos + 1, mem_end_);
           assert(mem_end_ == new_end_pos + 1);
           mem_end_ = new_end_pos;
+        }
+        return ret;
+      }
+
+    template <typename T, typename Allocator>
+      int ObVector<T, Allocator>::remove(iterator start_pos, iterator end_pos)
+      {
+        int ret = OB_SUCCESS;
+        if (start_pos < mem_begin_ || start_pos >= mem_end_
+          || end_pos < mem_begin_ || end_pos > mem_end_)
+        {
+          ret = OB_ARRAY_OUT_OF_RANGE;
+        }
+        else if (end_pos - start_pos > 0)
+        {
+          iterator new_end_pos = move(start_pos, end_pos, mem_end_);
+          assert(mem_end_ == new_end_pos + (end_pos - start_pos));
+          mem_end_ = new_end_pos;
+        }
+        return ret;
+      }
+
+    template <typename T, typename Allocator>
+      int ObVector<T, Allocator>::remove(const int32_t index)
+      {
+        int ret = OB_SUCCESS;
+        if (index >= 0 && index < size())
+        {
+          ret = remove(mem_begin_ + index);
+        }
+        else
+        {
+          ret = OB_ENTRY_NOT_EXIST;
         }
         return ret;
       }
@@ -226,11 +281,11 @@ namespace oceanbase
           ++pos;
         }
 
-        if (pos >= mem_end_) 
+        if (pos >= mem_end_)
         {
           ret = OB_ENTRY_NOT_EXIST;
         }
-        else 
+        else
         {
           removed_value = *pos;
           ret = remove(pos);
@@ -290,7 +345,7 @@ namespace oceanbase
     // ObSortedVector
     template <typename T, typename Allocator>
       template <typename Compare>
-      int ObSortedVector<T, Allocator>::insert(const_value_type value, 
+      int ObSortedVector<T, Allocator>::insert(const_value_type value,
           iterator & insert_pos, Compare compare)
       {
         int ret = OB_SUCCESS;
@@ -308,7 +363,7 @@ namespace oceanbase
 
     template <typename T, typename Allocator>
       template <typename Compare, typename Unique>
-      int ObSortedVector<T, Allocator>::insert_unique(const_value_type value, 
+      int ObSortedVector<T, Allocator>::insert_unique(const_value_type value,
           iterator & insert_pos, Compare compare, Unique unique)
       {
         int ret = OB_SUCCESS;
@@ -318,7 +373,7 @@ namespace oceanbase
         insert_pos = end_iterator;
         if (OB_SUCCESS == ret)
         {
-          iterator find_pos = std::lower_bound(begin_iterator, 
+          iterator find_pos = std::lower_bound(begin_iterator,
               end_iterator, value, compare);
           insert_pos = find_pos;
           iterator compare_pos = find_pos;
@@ -348,7 +403,7 @@ namespace oceanbase
           }
 
 
-          if (OB_SUCCESS == ret) 
+          if (OB_SUCCESS == ret)
             ret = vector_.insert(insert_pos, value);
         }
         return ret;
@@ -356,7 +411,7 @@ namespace oceanbase
 
     template <typename T, typename Allocator>
       template <typename Compare>
-      int ObSortedVector<T, Allocator>::find(const_value_type value, 
+      int ObSortedVector<T, Allocator>::find(const_value_type value,
           iterator& pos, Compare compare) const
       {
         int ret = OB_ENTRY_NOT_EXIST;
@@ -373,7 +428,7 @@ namespace oceanbase
 
     template <typename T, typename Allocator>
       template <typename ValueType, typename Compare, typename Equal>
-      int ObSortedVector<T, Allocator>::find(const ValueType &value, 
+      int ObSortedVector<T, Allocator>::find(const ValueType &value,
           iterator& pos, Compare compare, Equal equal) const
       {
         int ret = OB_ENTRY_NOT_EXIST;
@@ -390,7 +445,7 @@ namespace oceanbase
 
     template <typename T, typename Allocator>
       template <typename ValueType, typename Compare>
-      typename ObSortedVector<T, Allocator>::iterator 
+      typename ObSortedVector<T, Allocator>::iterator
       ObSortedVector<T, Allocator>::lower_bound(const ValueType &value, Compare compare) const
       {
         return std::lower_bound(begin(), end(), value, compare);
@@ -398,7 +453,7 @@ namespace oceanbase
 
     template <typename T, typename Allocator>
       template <typename ValueType, typename Compare>
-      typename ObSortedVector<T, Allocator>::iterator 
+      typename ObSortedVector<T, Allocator>::iterator
       ObSortedVector<T, Allocator>::upper_bound(const ValueType &value, Compare compare) const
       {
         return std::upper_bound(begin(), end(), value, compare);
@@ -406,7 +461,7 @@ namespace oceanbase
 
     template <typename T, typename Allocator>
       template <typename ValueType, typename Compare, typename Equal>
-      int ObSortedVector<T, Allocator>::remove_if(const ValueType& value, 
+      int ObSortedVector<T, Allocator>::remove_if(const ValueType& value,
           Compare comapre, Equal equal)
       {
         iterator pos = end();
@@ -420,7 +475,7 @@ namespace oceanbase
 
     template <typename T, typename Allocator>
       template <typename ValueType, typename Compare, typename Equal>
-      int ObSortedVector<T, Allocator>::remove_if(const ValueType& value, 
+      int ObSortedVector<T, Allocator>::remove_if(const ValueType& value,
           Compare comapre, Equal equal, value_type &removed_value)
       {
         iterator pos = end();
@@ -429,6 +484,17 @@ namespace oceanbase
         {
           removed_value = *pos;
           ret = vector_.remove(pos);
+        }
+        return ret;
+      }
+
+    template <typename T, typename Allocator>
+      int ObSortedVector<T, Allocator>::remove(iterator start_pos, iterator end_pos)
+      {
+        int ret = OB_SUCCESS;
+        if (end_pos - start_pos > 0)
+        {
+          ret = vector_.remove(start_pos, end_pos);
         }
         return ret;
       }

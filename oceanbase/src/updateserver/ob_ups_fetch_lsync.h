@@ -18,6 +18,7 @@
 #include "tbsys.h"
 #include "common/ob_server.h"
 #include "ob_ups_rpc_stub.h"
+//#include "mock_ups_rpc_stub.h"
 #include "ob_commit_log_receiver.h"
 
 namespace oceanbase
@@ -46,7 +47,8 @@ namespace oceanbase
       /// @param [in] log_seq 起始日志序号
       /// @param [in] rpc_stub RPC类
       virtual int init(const common::ObServer &lsync_server, const uint64_t log_id,
-                       const uint64_t log_seq, ObUpsRpcStub *rpc_stub,
+                       const uint64_t log_seq, //ObUpsRpcStub *rpc_stub,
+                       ObUpsRpcStub *rpc_stub,
                        ObCommitLogReceiver *clog_receiver,
                        const int64_t fetch_timeout, common::ObRoleMgr *role_mgr);
 
@@ -72,6 +74,7 @@ namespace oceanbase
       };
 
     protected:
+      //ObUpsRpcStub *rpc_stub_;
       ObUpsRpcStub *rpc_stub_;
       ObCommitLogReceiver *clog_receiver_;
       common::ObRoleMgr *role_mgr_;

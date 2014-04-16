@@ -1,19 +1,14 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_tablet_info_manager.cpp for ...
- *
- * Authors:
- *   daoan <daoan@taobao.com>
- *
- */
-
+/*===============================================================
+*   (C) 2007-2010 Taobao Inc.
+*
+*
+*   Version: 0.1 2010-10-20
+*
+*   Authors:
+*          daoan(daoan@taobao.com)
+*
+*
+================================================================*/
 #include "rootserver/ob_tablet_info_manager.h"
 #include "common/utility.h"
 namespace oceanbase
@@ -33,18 +28,19 @@ namespace oceanbase
     void ObTabletCrcHistoryHelper::rest_all_crc_sum()
     {
       memset(crc_sum_, 0, sizeof(uint64_t) * MAX_KEEP_HIS_COUNT);
+      memset(row_checksum_, 0, sizeof(uint64_t) * MAX_KEEP_HIS_COUNT);
     }
-    int ObTabletCrcHistoryHelper::check_and_update(const int64_t version, const uint64_t crc_sum)
+    int ObTabletCrcHistoryHelper::check_and_update(const int64_t version, const uint64_t crc_sum, const uint64_t row_checksum)
     {
       int ret = OB_SUCCESS;
       int64_t min_version = 0;
       int64_t max_version = 0;
       get_min_max_version(min_version, max_version);
-      if (version > max_version) 
+      if (version > max_version)
       {
-        update_crc_sum(min_version, version, crc_sum);
+        update_crc_sum(min_version, version, crc_sum, row_checksum);
       }
-      else 
+      else
       {
         bool found_same_version = false;
         for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
@@ -55,6 +51,7 @@ namespace oceanbase
             if (crc_sum_[i] == 0)
             {
               crc_sum_[i] = crc_sum;
+              row_checksum_[i] = row_checksum;
             }
             else
             {
@@ -63,12 +60,18 @@ namespace oceanbase
                 TBSYS_LOG(WARN, "crc check error version %ld crc sum %lu, %lu", version_[i], crc_sum_[i], crc_sum);
                 ret = OB_ERROR;
               }
+
+              //not return OB_ERROR, just in case
+              if(row_checksum != 0 && row_checksum != row_checksum_[i])
+              {
+                TBSYS_LOG(WARN, "row_checksum check error version %ld row_checksum %lu, %lu", version_[i], row_checksum_[i], row_checksum);
+              }
             }
           }
         }
         if (!found_same_version)
         {
-          if (version > min_version) update_crc_sum(min_version, version, crc_sum);
+          if (version > min_version) update_crc_sum(min_version, version, crc_sum, row_checksum);
         }
       }
       return ret;
@@ -97,6 +100,10 @@ namespace oceanbase
         {
           ret = serialization::encode_vi64(buf, buf_len, tmp_pos, crc_sum_[i]);
         }
+        if (OB_SUCCESS == ret)
+        {
+          ret = serialization::encode_vi64(buf, buf_len, tmp_pos, row_checksum_[i]);
+        }
       }
       if (OB_SUCCESS == ret)
       {
@@ -106,7 +113,7 @@ namespace oceanbase
     }
     DEFINE_DESERIALIZE(ObTabletCrcHistoryHelper)
     {
-      int ret = OB_SUCCESS;      
+      int ret = OB_SUCCESS;
       int64_t tmp_pos = pos;
       for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
       {
@@ -117,6 +124,10 @@ namespace oceanbase
         if (OB_SUCCESS == ret)
         {
           ret = serialization::decode_vi64(buf, data_len, tmp_pos, reinterpret_cast<int64_t *>(&crc_sum_[i]));
+        }
+        if (OB_SUCCESS == ret)
+        {
+          ret = serialization::decode_vi64(buf, data_len, tmp_pos, reinterpret_cast<int64_t *>(&row_checksum_[i]));
         }
       }
       if (OB_SUCCESS == ret)
@@ -133,125 +144,131 @@ namespace oceanbase
       {
         len += serialization::encoded_length_vi64(version_[i]);
         len += serialization::encoded_length_vi64(crc_sum_[i]);
+        len += serialization::encoded_length_vi64(row_checksum_[i]);
       }
       return len;
     }
-    void ObTabletCrcHistoryHelper::update_crc_sum(const int64_t version, const int64_t new_version, const uint64_t crc_sum)
+    void ObTabletCrcHistoryHelper::update_crc_sum(const int64_t version, const int64_t new_version, const uint64_t crc_sum, const uint64_t row_checksum)
     {
       for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
       {
-        if (version_[i] == version) 
+        if (version_[i] == version)
         {
           version_[i] = new_version;
           crc_sum_[i] = crc_sum;
+          row_checksum_[i] = row_checksum;
           break;
         }
       }
     }
+
+    int ObTabletCrcHistoryHelper::get_row_checksum(const int64_t version, uint64_t &row_checksum) const
+    {
+      int ret = OB_ERROR;
+      for (int i = 0 ; i < MAX_KEEP_HIS_COUNT; i++)
+      {
+        if (version_[i] == version)
+        {
+          row_checksum = row_checksum_[i];
+          ret = OB_SUCCESS;
+        }
+      }
+
+      return ret;
+    }
+
     void ObTabletCrcHistoryHelper::reset_crc_sum(const int64_t version)
     {
       for (int i = 0 ; i < MAX_KEEP_HIS_COUNT; i++)
       {
-        if (version_[i] == version) crc_sum_[i] = 0;
+        if (version_[i] == version)
+        {
+         row_checksum_[i] = 0;
+         crc_sum_[i] = 0;
+        }
       }
     }
+////////////////////////////////////////////////////////////////
     ObTabletInfoManager::ObTabletInfoManager()
     {
       tablet_infos_.init(MAX_TABLET_COUNT, data_holder_);
     }
-    int ObTabletInfoManager::add_tablet_info(const common::ObTabletInfo& tablet_info, int32_t& out_index,
-        bool clone_start_key, bool clone_end_key )
+
+    int ObTabletInfoManager::add_tablet_info(const common::ObTabletInfo& tablet_info, int32_t& out_index)
     {
       out_index = OB_INVALID_INDEX;
       int32_t ret = OB_SUCCESS;
       if (tablet_infos_.get_array_index() >= MAX_TABLET_COUNT)
       {
-        TBSYS_LOG(ERROR, "too many tablet max is %d now is %ld", MAX_TABLET_COUNT, tablet_infos_.get_array_index());
+        TBSYS_LOG(ERROR, "too many tablet max is %ld now is %ld", MAX_TABLET_COUNT, tablet_infos_.get_array_index());
         ret = OB_ERROR;
       }
       if (OB_SUCCESS == ret)
       {
         ObTabletInfo tmp;
-        clone_tablet(tmp, tablet_info, clone_start_key, clone_end_key);
-        if(!tablet_infos_.push_back(tmp))
+        if (OB_SUCCESS != (ret = tmp.deep_copy(allocator_, tablet_info)))
         {
-          TBSYS_LOG(ERROR, "too many tablet max is %d now is %ld", MAX_TABLET_COUNT, tablet_infos_.get_array_index());
+          TBSYS_LOG(ERROR, "copy tablet error");
+        }
+        else if(!tablet_infos_.push_back(tmp))
+        {
+          TBSYS_LOG(ERROR, "too many tablet max is %ld now is %ld", MAX_TABLET_COUNT, tablet_infos_.get_array_index());
           ret = OB_ERROR;
         }
         else
         {
-          out_index = tablet_infos_.get_array_index() - 1;
+          out_index = static_cast<int32_t>(tablet_infos_.get_array_index() - 1);
         }
       }
       return ret;
     }
-    int32_t ObTabletInfoManager::get_index(common::ObTabletInfo* data_pointer) const
+    int32_t ObTabletInfoManager::get_index(const_iterator it) const
     {
-      return data_pointer - begin();
+      return static_cast<int32_t>(it - begin());
     }
-    const ObTabletInfo* ObTabletInfoManager::get_tablet_info(const int32_t index) const
-    {
-      return tablet_infos_.at(index);
-    }
-    ObTabletInfo* ObTabletInfoManager::get_tablet_info(const int32_t index)
+    ObTabletInfoManager::const_iterator ObTabletInfoManager::get_tablet_info(const int32_t index) const
     {
       return tablet_infos_.at(index);
     }
-    const ObTabletInfo* ObTabletInfoManager::begin() const
+    ObTabletInfoManager::iterator ObTabletInfoManager::get_tablet_info(const int32_t index)
+    {
+      return tablet_infos_.at(index);
+    }
+    ObTabletInfoManager::const_iterator ObTabletInfoManager::begin() const
     {
       return data_holder_;
     }
-    ObTabletInfo* ObTabletInfoManager::begin()
+    ObTabletInfoManager::iterator ObTabletInfoManager::begin()
     {
       return data_holder_;
     }
-    const ObTabletInfo* ObTabletInfoManager::end() const
+    ObTabletInfoManager::const_iterator ObTabletInfoManager::end() const
     {
       return begin() + tablet_infos_.get_array_index();
     }
-    ObTabletInfo* ObTabletInfoManager::end() 
+    ObTabletInfoManager::iterator ObTabletInfoManager::end()
     {
       return begin() + tablet_infos_.get_array_index();
     }
     int32_t ObTabletInfoManager::get_array_size() const
     {
-      return tablet_infos_.get_array_index();
+      return static_cast<int32_t>(tablet_infos_.get_array_index());
     }
-
-    void ObTabletInfoManager::clone_tablet(common::ObTabletInfo& dst, const common::ObTabletInfo& src,
-        bool clone_start_key, bool clone_end_key)
-    {   
-      dst.row_count_ = src.row_count_;
-      dst.occupy_size_ = src.occupy_size_;
-      dst.crc_sum_ = src.crc_sum_;
-      dst.range_.table_id_ = src.range_.table_id_;
-      dst.range_.border_flag_ = src.range_.border_flag_;
-
-
-      if (clone_start_key) 
+    void ObTabletInfoManager::clear()
+    {
+      for (int64_t i = 0; i < tablet_infos_.get_array_index(); i++)
       {
-        common::ObString::obstr_size_t sk_len = src.range_.start_key_.length();
-        char* sk = reinterpret_cast<char*>(allocator_.alloc(sk_len));
-        memcpy(sk, src.range_.start_key_.ptr(), sk_len);
-        dst.range_.start_key_.assign(sk, sk_len);
+        allocator_.free(const_cast<char*>(reinterpret_cast<const char*>(tablet_infos_.at(i)->range_.start_key_.ptr())));
+        allocator_.free(const_cast<char*>(reinterpret_cast<const char*>(tablet_infos_.at(i)->range_.end_key_.ptr())));
+        tablet_infos_.at(i)->range_.start_key_.assign(NULL, 0);
+        tablet_infos_.at(i)->range_.end_key_.assign(NULL, 0);
       }
-      else
+      tablet_infos_.clear();
+      for (int64_t i = 0; i < MAX_TABLET_COUNT; i++)
       {
-        dst.range_.start_key_ = src.range_.start_key_;
+        crc_helper_[i].reset();
       }
-
-      if (clone_end_key)
-      {
-        common::ObString::obstr_size_t ek_len = src.range_.end_key_.length();
-        char* ek = reinterpret_cast<char*>(allocator_.alloc(ek_len));
-        memcpy(ek, src.range_.end_key_.ptr(), ek_len);
-        dst.range_.end_key_.assign(ek, ek_len);
-      }
-      else
-      {
-        dst.range_.end_key_ = src.range_.end_key_;
-      }
-    }   
+    }
 
     ObTabletCrcHistoryHelper *ObTabletInfoManager::get_crc_helper(const int32_t index)
     {
@@ -279,12 +296,12 @@ namespace oceanbase
       {
         data_holder_[index].range_.to_string(row_key_dump_buff, OB_MAX_ROW_KEY_LENGTH * 2);
         TBSYS_LOG(INFO, "%s", row_key_dump_buff);
-        TBSYS_LOG(INFO, "row_count = %ld occupy_size = %ld", 
+        TBSYS_LOG(INFO, "row_count = %ld occupy_size = %ld",
             data_holder_[index].row_count_, data_holder_[index].occupy_size_);
         for (int i = 0; i < ObTabletCrcHistoryHelper::MAX_KEEP_HIS_COUNT; i++)
         {
-          TBSYS_LOG(INFO, "crc_info %d version %ld, crc_sum %lu", 
-              i, crc_helper_[index].version_[i], crc_helper_[index].crc_sum_[i]);
+          TBSYS_LOG(INFO, "crc_info %d version %ld, crc_sum %lu row_checksum %lu",
+              i, crc_helper_[index].version_[i], crc_helper_[index].crc_sum_[i], crc_helper_[index].row_checksum_[i]);
         }
       }
 
@@ -294,11 +311,11 @@ namespace oceanbase
     {
       static char start_key_buff[OB_MAX_ROW_KEY_LENGTH * 2];
       static char end_key_buff[OB_MAX_ROW_KEY_LENGTH * 2];
-      int size = tablet_infos_.get_array_index();
+      int size = static_cast<int32_t>(tablet_infos_.get_array_index());
       fprintf(stream, "size %d", size);
       for (int64_t i = 0; i < tablet_infos_.get_array_index(); i++)
       {
-        fprintf(stream, "index %ld row_count %ld occupy_size %ld crcinfo %lu ", 
+        fprintf(stream, "index %ld row_count %ld occupy_size %ld crcinfo %lu ",
             i, data_holder_[i].row_count_, data_holder_[i].occupy_size_, data_holder_[i].crc_sum_ );
         for (int crc_i = 0; crc_i < ObTabletCrcHistoryHelper::MAX_KEEP_HIS_COUNT; crc_i++)
         {
@@ -312,18 +329,15 @@ namespace oceanbase
 
         if (data_holder_[i].range_.start_key_.ptr() != NULL)
         {
-          common::hex_to_str(data_holder_[i].range_.start_key_.ptr(), data_holder_[i].range_.start_key_.length(),
-              start_key_buff, OB_MAX_ROW_KEY_LENGTH * 2);
+          data_holder_[i].range_.start_key_.to_string(start_key_buff, OB_MAX_ROW_KEY_LENGTH * 2);
         }
 
         if (data_holder_[i].range_.end_key_.ptr() != NULL)
         {
-          common::hex_to_str(data_holder_[i].range_.end_key_.ptr(), data_holder_[i].range_.end_key_.length(),
-              end_key_buff, OB_MAX_ROW_KEY_LENGTH * 2);
+          data_holder_[i].range_.start_key_.to_string(end_key_buff, OB_MAX_ROW_KEY_LENGTH * 2);
         }
 
-        fprintf(stream, "start_key %d %s\n end_key %d %s\n", data_holder_[i].range_.start_key_.length(), start_key_buff, 
-            data_holder_[i].range_.end_key_.length(), end_key_buff);
+        fprintf(stream, "start_key %s\n end_key %s\n", start_key_buff, end_key_buff);
       }
       return;
     }
@@ -351,7 +365,7 @@ namespace oceanbase
         }
         fscanf(stream, "table_id %ld border_flag %d\n", &tablet_info.range_.table_id_, &border_flag_data);
 
-        tablet_info.range_.border_flag_.set_data(border_flag_data);
+        tablet_info.range_.border_flag_.set_data(static_cast<int8_t>(border_flag_data));
 
         start_key_buff[0] = 0;
         end_key_buff[0] = 0;
@@ -362,7 +376,8 @@ namespace oceanbase
         fscanf(stream, "start_key %d", &len);
         if (len > 0)
         {
-          fscanf(stream, "%s", start_key_buff);
+          // @todo from text to rowkey
+          //fscanf(stream, "%s", start_key_buff);
         }
 
         len = 0;
@@ -370,15 +385,16 @@ namespace oceanbase
 
         if (len > 0)
         {
-          fscanf(stream, "%s", end_key_buff);
+          // @todo from text to rowkey
+          //fscanf(stream, "%s", end_key_buff);
         }
         fscanf(stream, "\n");
 
-        str_to_hex(start_key_buff, strlen(start_key_buff), ob_start_key_buff, OB_MAX_ROW_KEY_LENGTH);
-        str_to_hex(end_key_buff, strlen(end_key_buff), ob_end_key_buff, OB_MAX_ROW_KEY_LENGTH);
+        str_to_hex(start_key_buff, static_cast<int32_t>(strlen(start_key_buff)), ob_start_key_buff, OB_MAX_ROW_KEY_LENGTH);
+        str_to_hex(end_key_buff, static_cast<int32_t>(strlen(end_key_buff)), ob_end_key_buff, OB_MAX_ROW_KEY_LENGTH);
 
-        tablet_info.range_.start_key_.assign_ptr(ob_start_key_buff, strlen(start_key_buff)/2 );
-        tablet_info.range_.end_key_.assign_ptr(ob_end_key_buff, strlen(end_key_buff)/2 );
+        // tablet_info.range_.start_key_.assign_ptr(ob_start_key_buff, strlen(start_key_buff)/2 );
+        // tablet_info.range_.end_key_.assign_ptr(ob_end_key_buff, strlen(end_key_buff)/2 );
 
         add_tablet_info(tablet_info, out_index);
         if (out_index != index)
@@ -418,7 +434,7 @@ namespace oceanbase
     }
     DEFINE_DESERIALIZE(ObTabletInfoManager)
     {
-      int ret = OB_SUCCESS;      
+      int ret = OB_SUCCESS;
       int64_t tmp_pos = pos;
       int64_t total_size = 0;
       if (OB_SUCCESS == ret)
@@ -427,21 +443,35 @@ namespace oceanbase
       }
       if (OB_SUCCESS == ret)
       {
-        for (int64_t i = 0; i < total_size; i++)
+        ObObj rowkey_objs1[OB_MAX_ROWKEY_COLUMN_NUMBER];
+        ObObj rowkey_objs2[OB_MAX_ROWKEY_COLUMN_NUMBER];
+        ObTabletInfo tmp_tablet_info;
+        for (int64_t i = 0; OB_SUCCESS == ret && i < total_size; i++)
         {
-          ObTabletInfo tmp_tablet_info;
-          int32_t out_index;
+          int32_t out_index = -1;
+          tmp_tablet_info.range_.start_key_.assign(rowkey_objs1, OB_MAX_ROWKEY_COLUMN_NUMBER);
+          tmp_tablet_info.range_.end_key_.assign(rowkey_objs2, OB_MAX_ROWKEY_COLUMN_NUMBER);
           ret = tmp_tablet_info.deserialize(buf, data_len, tmp_pos);
-          add_tablet_info(tmp_tablet_info, out_index);
-          ret = crc_helper_[out_index].deserialize(buf, data_len, tmp_pos);
-          if (OB_SUCCESS != ret) {
-            break;
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "failed to deserialize tablet info, ret=%d, buf=%p, data_len=%ld, tmp_pos=%ld",
+                ret, buf, data_len, tmp_pos);
+          }
+          else
+          {
+            add_tablet_info(tmp_tablet_info, out_index);
+            ret = crc_helper_[out_index].deserialize(buf, data_len, tmp_pos);
+            if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(WARN, "failed to deserialize crc info, out_index=%d, ret=%d, buf=%p, data_len=%ld, "
+                  "tmp_pos=%ld", out_index, ret, buf, data_len, tmp_pos);
+            }
           }
         }
       }
+
       if (OB_SUCCESS == ret)
       {
-
         pos = tmp_pos;
       }
       return ret;
@@ -459,4 +489,3 @@ namespace oceanbase
     }
   }
 }
-

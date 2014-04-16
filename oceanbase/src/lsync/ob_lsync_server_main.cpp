@@ -27,6 +27,15 @@ namespace oceanbase
 {
   namespace lsync
   {
+    // static void set_log_level(int level)
+    // {
+    //   if (level < TBSYS_LOG_LEVEL_ERROR)
+    //     level = TBSYS_LOG_LEVEL_ERROR;
+    //   if (level > TBSYS_LOG_LEVEL_DEBUG)
+    //     level = TBSYS_LOG_LEVEL_DEBUG;
+    //   TBSYS_LOGGER._level = level;
+    // }
+
     ObLsyncServerMain* ObLsyncServerMain::get_instance()
     {
       if (NULL == instance_)
@@ -41,9 +50,9 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
 
-      if (OB_SUCCESS != (err = param_.load_from_file(config_file_name_)))
+      if (OB_SUCCESS != (err = param_.load_from_file(config_)))
       {
-        TBSYS_LOG(WARN, "load_from_file('%s')=>%d", config_file_name_, err);
+        TBSYS_LOG(WARN, "load_from_file('%s')=>%d", config_, err);
       }
       else
       {
@@ -59,7 +68,7 @@ namespace oceanbase
       if (OB_SUCCESS == err)
       {
         param_.print("final param");
-        err = server_.initialize(param_.get_commit_log_dir(), param_.get_log_file_start_id(), param_.get_dev_name(), param_.get_port(), param_.get_timeout());
+        err = server_.initialize(param_.get_commit_log_dir(), param_.get_log_file_start_id(), param_.get_dev_name(), param_.get_port(), param_.get_timeout(), param_.get_convert_switch_log(), param_.get_lsync_retry_wait_time_us());
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "ObLsyncServer.initialize()=>%d", err);
@@ -87,10 +96,10 @@ namespace oceanbase
           break;
       }
     }
-    const char* ObLsyncServerMain::parse_cmd_line(const int argc,  char* const* argv)
+    void ObLsyncServerMain::parse_cmd_line(const int argc,  char* const* argv)
     {
       int opt = 0;
-      const char* opt_string = "hNVf:d:s:t:D:p:";
+      const char* opt_string = "hNVf:d:s:t:D:p:C";
       struct option longopts[] =
       {
         {"config_file", 1, NULL, 'f'},
@@ -102,12 +111,14 @@ namespace oceanbase
         {"timeout", 1, NULL, 't'},
         {"dev", 1, NULL, 'D'},
         {"port", 1, NULL, 'p'},
+        {"convert-switch-log", 0, NULL, 'C'},
         {0, 0, 0, 0}
       };
 
       app_name_ = argv[0];
-      char* rest_argv[32];
+      const char* rest_argv[32];
       int rest_idx = 1;
+      rest_argv[0] = argv[0];
       while((opt = getopt_long(argc, argv, opt_string, longopts, NULL)) != -1
             && rest_idx + 2 < (int)ARRAYSIZEOF(rest_argv))
       {
@@ -141,19 +152,22 @@ namespace oceanbase
         case 'p':
           cmd_line_param_.set_port(atoi(optarg));
           break;
+        case 'C':
+          cmd_line_param_.set_convert_switch_log(1);
+          break;
         default:
           break;
         }
       }
 
       optind = 1;
-      return BaseMain::parse_cmd_line(rest_idx, rest_argv);
+      BaseMain::parse_cmd_line(rest_idx, const_cast<char* const*>(rest_argv));
     }
 
     void ObLsyncServerMain::print_usage(const char *prog_name)
     {
-      char* usages = "Usages:\n"
-        "    %1$s --log-dir=v0.1-ups-log-dir --start=v0.1-ups-log-start-seq-id --dev=bond0 --port 2600\n";
+      const char* usages = "Usages:\n"
+        "    %1$s --log-dir=v0.1-ups-log-dir --start=v0.1-ups-log-start-seq-id --dev=bond0 --port 2600 --convert-switch-log\n";
       fprintf(stderr, "\nNote: Options Can be set both in config file and cmdline(cmdline override config file).\n");
       fprintf(stderr, usages, prog_name);
       fprintf(stderr, "\nCommon Options:\n");

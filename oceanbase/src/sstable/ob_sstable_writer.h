@@ -1,19 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_sstable_writer.h
+ * ob_sstable_writer.h for persistent ssatable. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
- * Changes: 
- *     fangji <fangji.hcm@taobao.com>
- *     qushan <qushan@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef OCEANBASE_SSTABLE_OB_SSTABLE_WRITER_H_
@@ -22,6 +17,8 @@
 #include "common/ob_define.h"
 #include "common/ob_string.h"
 #include "common/ob_file.h"
+#include "common/ob_rowkey.h"
+#include "common/ob_row.h"
 #include "common/bloom_filter.h"
 #include "common/ob_record_header.h"
 #include "common/compress/ob_compressor.h"
@@ -57,6 +54,8 @@ namespace oceanbase
      *              ----------------------------------
      *              |       ObTableSchem             |
      *              ----------------------------------
+     *              |          Range                 |
+     *              ----------------------------------
      *              |      ObSstableTrailer          |
      *              ----------------------------------
      *              |   ObSSTableTrailerOffset       |
@@ -80,7 +79,7 @@ namespace oceanbase
       static const int16_t BLOCK_INDEX_MAGIC;
       static const int16_t BLOOM_FILTER_MAGIC;
       static const int16_t SCHEMA_MAGIC;
-      static const int16_t KEY_STREAM_MAGIC;
+      static const int16_t RANGE_MAGIC;
       static const int16_t TRAILER_MAGIC;
 
     public:
@@ -143,6 +142,7 @@ namespace oceanbase
        *         OB_ERROR
        */
       int append_row(const ObSSTableRow& row, int64_t& approx_space_usage);
+      int append_row(const common::ObRow& row, int64_t& approx_space_usage);
 
  
       /**
@@ -168,11 +168,23 @@ namespace oceanbase
        */
       int close_sstable(int64_t& trailer_offset, int64_t& sstable_size);
 
-      void set_file_sys(common::ObFileAppender& file_sys);
+      void set_file_sys(common::ObIFileAppender *file_sys);
       
       void set_dio(const bool dio)
       {
         dio_ = dio;
+      }
+
+      int set_tablet_range(const common::ObNewRange& tablet_range);
+
+      const ObSSTableTrailer& get_trailer() const
+      {
+        return trailer_;
+      }
+
+      uint64_t get_row_checksum() const
+      {
+        return row_checksum_;
       }
     private:
       /**
@@ -192,7 +204,7 @@ namespace oceanbase
 
       bool is_invalid_row_key(const uint64_t table_id, 
                               const uint64_t column_group_id,
-                              const common::ObString row_key);
+                              const common::ObRowkey& row_key);
 
       bool need_switch_block(const uint64_t table_id, 
                              const uint64_t column_group_id, 
@@ -206,8 +218,7 @@ namespace oceanbase
 
       int update_bloom_filter(const uint64_t column_group_id,
                               const uint64_t table_id,
-                              const common::ObString& key); 
-
+                              const common::ObRowkey& key); 
       /**
        * check whether write sstable with dense foramt 
        * 
@@ -276,6 +287,14 @@ namespace oceanbase
       int write_schema();
 
       /**
+       * write table range
+       * 
+       * @return int if success return OB_SUCCESS, else return 
+       *         OB_ERROR
+       */
+      int write_range();
+
+      /**
        * writer trailer 
        * 
        * @return int if success return OB_SUCCESS, else return 
@@ -285,24 +304,26 @@ namespace oceanbase
 
     private:
       static const int64_t MAX_SSTABLE_NAME_SIZE = 1024;  //1k
+      static const int64_t MAX_BLOCK_INDEX_SIZE = INT32_MAX; //2G - 1
 
     private:
       DISALLOW_COPY_AND_ASSIGN(ObSSTableWriter);
 
       bool inited_;                              //whether sstable writer is inited
       bool first_row_;                           //whether first row in sstable
+      bool use_binary_rowkey_;                   //whether use binary rowkey format?
       bool add_row_count_;                       //whether add row count
       bool dio_;                                 //whether write sstable using dio
       
       common::ObFileAppender default_filesys_;   //file system
-      common::ObFileAppender* filesys_;          //actual file system
+      common::ObIFileAppender* filesys_;          //actual file system
       char filename_[MAX_SSTABLE_NAME_SIZE];     //full file name of sstable
       uint64_t table_id_;                        //current table id of sstable
       uint64_t column_group_id_;                 //current column group id
 
-      common::ObString cur_key_;                 //current key
+      common::ObRowkey cur_key_;                 //current key
+      common::ObString cur_binary_key_;          //current binary key
       common::ObMemBuf cur_key_buf_;             //current key buffer
-      common::ObMemBuf bf_key_buf_;              //bloom filter key buf
                                                 
       int64_t offset_;                           //current offset of sstable
       int64_t prev_offset_;                      //previous offset of sstable
@@ -318,9 +339,11 @@ namespace oceanbase
       ObSSTableBlockBuilder block_builder_;      //row data block builder
       ObSSTableBlockIndexBuilder index_builder_; //index block builder
       bool enable_bloom_filter_;                 //if enable bloom filter  
-      common::BloomFilter bloom_filter_;         //bloom filter
+      common::ObBloomFilterV1 bloom_filter_;         //bloom filter
       uint64_t sstable_checksum_;                //checksum of sstable
       ObSSTableTrailer trailer_;                 //sstable trailer
+      int64_t frozen_time_;                      //frozen time
+      int64_t row_checksum_;                     //sum of the row checksum
     };
   } // namespace oceanbase::sstable
 } // namespace Oceanbase

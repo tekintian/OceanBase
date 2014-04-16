@@ -18,7 +18,7 @@
 #define _OCEANBASE_LSYNC_OB_SEEKABLE_LOG_READER_H_
 
 #include "common/ob_define.h"
-#include "common/ob_single_log_reader.h"
+#include "common/ob_repeated_log_reader.h"
 
 using namespace oceanbase::common;
 
@@ -106,12 +106,13 @@ namespace oceanbase
         int get_next(LogCommand& cmd, uint64_t& seq, char*& buf, int64_t& data_len);
         int get_(uint64_t& log_file_id, uint64_t& log_seq_id,
                  LogCommand& cmd, uint64_t& seq, char*& buf, int64_t& data_len);
-        bool stop_;
+        volatile bool stop_;
         const char* log_dir_;
-        ObSingleLogReader reader_;
+        ObRepeatedLogReader reader_;
         int64_t last_log_file_id_;
         int64_t last_log_seq_id_;
         ObLsyncLogEntry last_log_;
+        ObDataBuffer log_buffer_;
     };
 
   } // end namespace lsync

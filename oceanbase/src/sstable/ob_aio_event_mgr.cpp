@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_aio_event_mgr.cpp
+ * ob_aio_event_mgr.cpp for manage aio event. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #include <tblog.h>
@@ -93,11 +91,11 @@ namespace oceanbase
 
     int ObAIOEventMgr::aio_wait(int64_t& timeout_us)
     {
-      int ret               = OB_ERROR;
+      int ret               = OB_SUCCESS;
       int64_t event_nr      = 0;
       int inner_ret         = OB_CS_EAGAIN;
       int64_t start_time    = tbsys::CTimeUtil::getTime();
-      int64_t cur_timeo_us  = timeout_us;
+      int64_t cur_timeout_us  = timeout_us;
       int64_t max_events_nr = ObAIOBufferMgr::AIO_BUFFER_COUNT 
                               * OB_MAX_COLUMN_GROUP_NUMBER;
       struct io_event events[max_events_nr];
@@ -118,8 +116,8 @@ namespace oceanbase
       {
         while (OB_CS_EAGAIN == inner_ret)
         {
-          timeout.tv_sec = cur_timeo_us / 1000000;
-          timeout.tv_nsec = cur_timeo_us % 1000000 * 1000;
+          timeout.tv_sec = cur_timeout_us / 1000000;
+          timeout.tv_nsec = cur_timeout_us % 1000000 * 1000;
           event_nr = io_getevents(ctx_, 1, max_events_nr, events, &timeout);
           if (0 == event_nr)
           {
@@ -133,9 +131,15 @@ namespace oceanbase
           {
             for (int64_t i = 0; i < event_nr; ++i)
             {
+              if (static_cast<int64_t>(events[i].res) < 0 || 0 != events[i].res2)
+              {
+                TBSYS_LOG(WARN, "aio return invalid result, ret_code=%ld, error=%s", 
+                    events[i].res2, strerror(static_cast<int32_t>(-events[i].res)));
+                ret = OB_IO_ERROR;
+              }
               static_cast<ObAIOBufferInterface*>(events[i].data)->aio_finished(
-                events[i].res, events[i].res2);
-              if (events[i].data == iocb_.data)
+                  events[i].res, static_cast<int>(events[i].res2));
+              if (OB_SUCCESS == ret && events[i].data == iocb_.data)
               {
                 /**
                  * this event is what we wait, it means that the waiting aio 
@@ -145,22 +149,30 @@ namespace oceanbase
               }
             }
 
-            cur_timeo_us = start_time + timeout_us - tbsys::CTimeUtil::getTime();
-            if (OB_SUCCESS == ret)
+            if (OB_SUCCESS == ret && 0 == cur_timeout_us)
             {
-              timeout_us = cur_timeo_us;
-              break;
-            }
-  
-            if (cur_timeo_us <= 0)
-            {
-              timeout_us = 0;
-              ret = OB_AIO_TIMEOUT;
+              //just check aio status
               break;
             }
             else
             {
-              inner_ret = OB_CS_EAGAIN;
+              cur_timeout_us = start_time + timeout_us - tbsys::CTimeUtil::getTime();
+              if (OB_SUCCESS == ret)
+              {
+                timeout_us = cur_timeout_us;
+                break;
+              }
+
+              if (cur_timeout_us <= 0)
+              {
+                timeout_us = 0;
+                ret = OB_AIO_TIMEOUT;
+                break;
+              }
+              else
+              {
+                inner_ret = OB_CS_EAGAIN;
+              }
             }
           }
         } //while

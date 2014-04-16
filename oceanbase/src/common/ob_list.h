@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_list.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_list.cpp / hash / common / Oceanbase
+ //
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ //
+ // Created on 2011-03-16 by Yubai (yubai.lk@taobao.com)
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ //
+ // Change Log
+ //
+////====================================================================
+
 #ifndef  OCEANBASE_COMMON_LIST_H_
 #define  OCEANBASE_COMMON_LIST_H_
 #include <stdlib.h>
@@ -40,7 +44,7 @@ namespace oceanbase
         ptr_t prev;
         T data;
       };
-      
+
       template <class List>
       class ConstIterator
       {
@@ -274,7 +278,7 @@ namespace oceanbase
         int push_back(const value_type &value)
         {
           int ret = 0;
-          node_ptr_t tmp = allocator_.allocate();
+          node_ptr_t tmp = allocator_.alloc();
           if (NULL == tmp)
           {
             ret = -1;
@@ -294,7 +298,7 @@ namespace oceanbase
         int push_front(const value_type &value)
         {
           int ret = 0;
-          node_ptr_t tmp = allocator_.allocate();
+          node_ptr_t tmp = allocator_.alloc();
           if (NULL == tmp)
           {
             ret = -1;
@@ -328,6 +332,26 @@ namespace oceanbase
           }
           return ret;
         };
+
+        int pop_front(value_type & value)
+        {
+          int ret = 0;
+          if (0 >= size_)
+          {
+            ret = -1;
+          }
+          else
+          {
+            node_ptr_t tmp = root_.next;
+            root_.next = tmp->next;
+            tmp->next->prev = root_;
+            value = tmp->data;
+            allocator_.free(tmp);
+            size_--;
+          }
+          return ret;
+        }
+
         int pop_front()
         {
           int ret = 0;
@@ -340,7 +364,7 @@ namespace oceanbase
             node_ptr_t tmp = root_.next;
             root_.next = tmp->next;
             tmp->next->prev = root_;
-            allocator_.deallocate(tmp);
+            allocator_.free(tmp);
             size_--;
           }
           return ret;
@@ -348,7 +372,7 @@ namespace oceanbase
         int insert(iterator iter, const value_type &value)
         {
           int ret = 0;
-          node_ptr_t tmp = allocator_.allocate();
+          node_ptr_t tmp = allocator_.alloc();
           if (NULL == tmp)
           {
             ret = -1;
@@ -378,11 +402,27 @@ namespace oceanbase
             node_ptr_t tmp = iter.node_;
             tmp->next->prev = iter.node_->prev;
             tmp->prev->next = iter.node_->next;
-            allocator_.deallocate(tmp);
+            allocator_.free(tmp);
             size_--;
           }
           return ret;
         };
+
+        int erase(const value_type &value)
+        {
+          int ret = -1;
+          iterator it = begin();
+          for (; it != end(); ++it)
+          {
+            if (it.node_->data == value)
+            {
+              ret = erase(it);
+              break;
+            }
+          }
+          return ret;
+        }
+
         iterator begin()
         {
           return iterator(root_.next);
@@ -405,7 +445,7 @@ namespace oceanbase
           while (iter != root_)
           {
             node_ptr_t tmp = iter->next;
-            allocator_.deallocate(iter);
+            allocator_.free(iter);
             iter = tmp;
           }
           root_.next = root_;
@@ -425,6 +465,10 @@ namespace oceanbase
         {
           return size_;
         };
+        void reset()
+        {
+          clear();
+        };
 
       private:
         node_holder_t root_;
@@ -435,5 +479,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_LIST_H_
-
-

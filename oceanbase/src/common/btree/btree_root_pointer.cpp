@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./btree_root_pointer.cpp for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #include "btree_define.h"
 #include "btree_alloc.h"
 #include "btree_node.h"
@@ -191,7 +176,7 @@ namespace oceanbase
       }
       if (node)
       {
-        node->init(count);
+        node->init(static_cast<int16_t>(count));
         node->set_sequence(sequence_);
         OCEAN_BTREE_CHECK_TRUE(0 == node->is_deleted(), "deleted %d", node->is_deleted());
         node_list_.add_node_list(node_allocator_, 1, node);
@@ -383,4 +368,3 @@ namespace oceanbase
 
   } // end namespace common
 } // end namespace oceanbase
-

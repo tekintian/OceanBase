@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2011 Taobao Inc.
+ * Copyright (C) 2007-2012 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,7 +17,7 @@
 #include "rootserver/ob_root_stat_key.h"
 #include <cstdlib>
 
-const char* oceanbase::rootserver::OB_RS_STAT_KEYSTR[]= 
+const char* oceanbase::rootserver::OB_RS_STAT_KEYSTR[]=
 {
   "reserve",                    // 0
   "common",                     // 1
@@ -46,5 +46,19 @@ const char* oceanbase::rootserver::OB_RS_STAT_KEYSTR[]=
   "frozen_time",                // 24
   "client_conf",                // 25
   "sstable_dist",               // 26
+  "fail_get_count",             // 27
+  "fail_scan_count",            // 28
+  "get_obi_role_count",         // 29
+  "migrate_count",              // 30
+  "copy_count",                 // 31
+  "merge",                      // 32
+  "unusual_tablets_num",        // 33
+  "shutdown_cs",                // 34
+  "all_server",                 // 35
+  "table_count",                // 36
+  "tablet_count",               // 37
+  "row_count",                  // 38
+  "data_size",                  // 39
   NULL
 };
+

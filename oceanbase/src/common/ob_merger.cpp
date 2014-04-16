@@ -1,18 +1,20 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_merger.cpp for ...
+ *
+ *
+ * Version: 0.1: ob_merger.cpp,v 0.1 2010/09/20 14:11:41 chuanhui Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - some work details if you want
  *
  */
+
 #include "ob_merger.h"
 #include "ob_action_flag.h"
 
@@ -33,10 +35,10 @@ namespace oceanbase
     void ObMerger :: reset()
     {
       iter_num_ = 0;
-      memset(iters_, 0x00, sizeof(iters_));
-      memset(iter_status_, 0x00, sizeof(iter_status_));
+      //memset(iters_, 0x00, sizeof(iters_));
+      //memset(iter_status_, 0x00, sizeof(iter_status_));
 
-      memset(cur_iter_arr_, 0x00, sizeof(cur_iter_arr_));
+      //memset(cur_iter_arr_, 0x00, sizeof(cur_iter_arr_));
       cur_iter_arr_idx_ = 0;
       cur_iter_arr_num_ = 0;
       cur_iter_cell_ = NULL;
@@ -338,7 +340,7 @@ namespace oceanbase
       {
         if (first_cell->table_id_ != second_cell->table_id_)
         {
-          cmp_val = first_cell->table_id_ - second_cell->table_id_;
+          cmp_val = static_cast<int32_t>(first_cell->table_id_ - second_cell->table_id_);
         }
         else
         {
@@ -471,4 +473,3 @@ namespace oceanbase
     }
   }
 }
-

@@ -1,22 +1,4 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
- *
- * ob_root_server_rpc.cpp
- *
- * Authors:
- *     qushan <qushan@taobao.com>
- * Changes: 
- *     maoqi <maoqi@taobao.com>
- *     xielun <xielun.szd@taobao.com>
- *     fangji <fangji.hcm@taobao.com>
- *
- */
+
 #include "ob_root_server_rpc.h"
 #include "common/ob_client_manager.h"
 #include "common/ob_result.h"
@@ -24,6 +6,8 @@
 #include "ob_chunk_server_main.h"
 #include "common/ob_scan_param.h"
 #include "common/ob_scanner.h"
+#include "common/ob_version.h"
+
 using namespace oceanbase::common;
 using namespace oceanbase::chunkserver;
 
@@ -46,7 +30,7 @@ int ObRootServerRpcStub::init(const ObServer & root_server, const ObClientManage
   {
     TBSYS_LOG(ERROR, "already inited or check input failed:inited[%s], rpc_frame[%p]",
        (init_? "ture": "false"), rpc_frame);
-    ret = OB_ERROR; 
+    ret = OB_ERROR;
   }
   else
   {
@@ -62,7 +46,7 @@ ThreadSpecificBuffer::Buffer* ObRootServerRpcStub::get_thread_buffer(void) const
 {
   ThreadSpecificBuffer::Buffer* buffer = NULL;
   // get buffer for rpc send and receive
-  ObChunkServerMain * obj = ObChunkServerMain::get_instance(); 
+  ObChunkServerMain * obj = ObChunkServerMain::get_instance();
   if (NULL == obj)
   {
     TBSYS_LOG(ERROR, "get ObChunkServerMain instance failed.");
@@ -104,20 +88,20 @@ int ObRootServerRpcStub::get_frame_buffer(common::ObDataBuffer & data_buffer) co
 
 int ObRootServerRpcStub::fetch_schema(const int64_t timestamp, ObSchemaManagerV2 & schema)
 {
-  int ret = OB_SUCCESS; 
+  int ret = OB_SUCCESS;
   // send_request timeout us
-  const int64_t timeout = ObChunkServerMain::get_instance()->get_chunk_server().get_param().get_network_time_out();
+  const int64_t timeout = ObChunkServerMain::get_instance()->get_chunk_server().get_config().get_network_timeout();
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
 
   // step 1. serialize timestamp to data_buff
   if (OB_SUCCESS == ret)
   {
-    ret = common::serialization::encode_vi64(data_buff.get_data(), 
+    ret = common::serialization::encode_vi64(data_buff.get_data(),
         data_buff.get_capacity(), data_buff.get_position(), timestamp);
     if (OB_SUCCESS != ret)
     {
-      TBSYS_LOG(ERROR, "serialize timestamp failed:timestamp[%ld], ret[%d].", 
+      TBSYS_LOG(ERROR, "serialize timestamp failed:timestamp[%ld], ret[%d].",
           timestamp, ret);
     }
   }
@@ -128,11 +112,8 @@ int ObRootServerRpcStub::fetch_schema(const int64_t timestamp, ObSchemaManagerV2
     ret = rpc_frame_->send_request(root_server_, OB_FETCH_SCHEMA, DEFAULT_VERSION, timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
-      const int32_t MAX_SERVER_ADDR_SIZE = 128;
-      char server_addr[MAX_SERVER_ADDR_SIZE];
-      root_server_.to_string(server_addr, MAX_SERVER_ADDR_SIZE);
       TBSYS_LOG(ERROR, "send request to root server(%s) for fetch schema failed"
-          ":timestamp[%ld], ret[%d].",server_addr, timestamp, ret);
+          ":timestamp[%ld], ret[%d].",to_cstring(root_server_), timestamp, ret);
     }
   }
 
@@ -173,7 +154,7 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
   ret = get_frame_buffer(data_buff);
 
   const int64_t report_timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
   const ObChunkServer& chunk_server = ObChunkServerMain::get_instance()->get_chunk_server();
   ObServer client_server;
 
@@ -197,20 +178,7 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
   // 2. serialize report Tablets
   if (OB_SUCCESS == ret)
   {
-    char range_buf[OB_RANGE_STR_BUFSIZ];
-    // report tablets information.
-    for (int64_t i = 0; i < tablets.get_tablet_size(); ++i)
-    {
-      const common::ObTabletReportInfo& info = tablets.get_tablet()[i];
-      info.tablet_info_.range_.to_string(range_buf, OB_RANGE_STR_BUFSIZ);
-      TBSYS_LOG(INFO, "report begin dump tablets[%ld]<%s>, "
-          "tablet occupy size:%ld, row count:%ld, checksum:%lu, version:%ld", 
-          i, range_buf, info.tablet_info_.occupy_size_, 
-          info.tablet_info_.row_count_, info.tablet_info_.crc_sum_,
-          info.tablet_location_.tablet_version_);
-    }
-
-    ret = tablets.serialize(data_buff.get_data(), 
+    ret = tablets.serialize(data_buff.get_data(),
         data_buff.get_capacity(), data_buff.get_position());
     if (OB_SUCCESS != ret)
     {
@@ -222,7 +190,7 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
   if (OB_SUCCESS == ret)
   {
     TBSYS_LOG(DEBUG, "report_tablets, timestamp:%ld", time_stamp);
-    ret = serialization::encode_vi64(data_buff.get_data(), 
+    ret = serialization::encode_vi64(data_buff.get_data(),
         data_buff.get_capacity(), data_buff.get_position(), time_stamp);
     if (OB_SUCCESS != ret)
     {
@@ -244,7 +212,7 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
   if (OB_SUCCESS == ret)
   {
     ObResultCode report_result;
-    ret = report_result.deserialize(data_buff.get_data(), 
+    ret = report_result.deserialize(data_buff.get_data(),
         data_buff.get_position(), return_start_pos);
     if (OB_SUCCESS != ret)
     {
@@ -252,7 +220,7 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
     }
     else if (OB_SUCCESS != report_result.result_code_)
     {
-      TBSYS_LOG(ERROR, "report Tablet failed, the RootServer returned error: ret[%d].", 
+      TBSYS_LOG(ERROR, "report Tablet failed, the RootServer returned error: ret[%d].",
           report_result.result_code_);
       ret = report_result.result_code_;
     }
@@ -266,7 +234,7 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
       // reset param buffer, for new remote procedure call process(OB_WAITING_JOB_DONE)
       data_buff.get_position() = 0;
       // serialize input param (const ObServer& client, const int64_t time_stamp)
-      ret = client_server.serialize(data_buff.get_data(), 
+      ret = client_server.serialize(data_buff.get_data(),
           data_buff.get_capacity(), data_buff.get_position());
       if (OB_SUCCESS != ret)
       {
@@ -275,7 +243,7 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
 
       if (OB_SUCCESS == ret)
       {
-        ret = serialization::encode_vi64(data_buff.get_data(), 
+        ret = serialization::encode_vi64(data_buff.get_data(),
             data_buff.get_capacity(), data_buff.get_position(), time_stamp);
         if (OB_SUCCESS != ret)
         {
@@ -294,22 +262,15 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
         }
       }
 
-      char addr_buf[BUFSIZ];
-      if (!root_server_.to_string(addr_buf, BUFSIZ))
-      {
-        strcpy(addr_buf, "Get Server IP failed");
-      }
-
-
-      if (OB_SUCCESS == ret) 
+      if (OB_SUCCESS == ret)
       {
         TBSYS_LOG(DEBUG, "schema_changed request is sent: "
             "dst[%s] code[%d] version[%d] data_length[%ld]",
-            addr_buf, OB_WAITING_JOB_DONE, DEFAULT_VERSION, data_buff.get_position());
+            to_cstring(root_server_), OB_WAITING_JOB_DONE, DEFAULT_VERSION, data_buff.get_position());
 
         ObResultCode report_result;
         return_start_pos = 0;
-        ret = report_result.deserialize(data_buff.get_data(), 
+        ret = report_result.deserialize(data_buff.get_data(),
             data_buff.get_position(), return_start_pos);
         if (OB_SUCCESS != ret)
         {
@@ -319,7 +280,7 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
         else if (OB_SUCCESS != report_result.result_code_)
         {
           TBSYS_LOG(ERROR, "report schema changed failed, "
-              "the RootServer returned error: ret[%d].", 
+              "the RootServer returned error: ret[%d].",
               report_result.result_code_);
           ret = report_result.result_code_;
         }
@@ -330,11 +291,81 @@ int ObRootServerRpcStub::report_tablets(const ObTabletReportInfoList& tablets, i
   return ret;
 }
 
-int ObRootServerRpcStub::register_server(const common::ObServer & server, 
+int ObRootServerRpcStub::delete_tablets(const common::ObTabletReportInfoList& tablets)
+{
+  int ret = OB_SUCCESS;
+  ObDataBuffer data_buff;
+  ret = get_frame_buffer(data_buff);
+
+  const int64_t timeout = ObChunkServerMain::get_instance()->
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
+  const ObChunkServer& chunk_server = ObChunkServerMain::get_instance()->get_chunk_server();
+  ObServer client_server;
+
+  if (OB_SUCCESS == ret)
+  {
+    client_server = chunk_server.get_self();
+  }
+
+  // serialize ObServer(chunkserver) + ObTabletReportInfoList + int64_t(timestamp)
+  // 1. serialize ObServer(client_server)
+  if (OB_SUCCESS == ret)
+  {
+    ret = client_server.serialize(data_buff.get_data(), data_buff.get_capacity(),
+        data_buff.get_position());
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "serialize ObServer(chunkserver) failed: ret[%d].", ret);
+    }
+  }
+
+  // 2. serialize report Tablets
+  if (OB_SUCCESS == ret)
+  {
+    ret = tablets.serialize(data_buff.get_data(),
+        data_buff.get_capacity(), data_buff.get_position());
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "serialize TabletInfoList failed: ret[%d].", ret);
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    ret = rpc_frame_->send_request(root_server_, OB_CS_DELETE_TABLETS,
+        DEFAULT_VERSION, timeout, data_buff);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "send_request(ReportTablets) to RootServer failed: ret[%d].", ret);
+    }
+  }
+
+  int64_t return_start_pos = 0;
+  if (OB_SUCCESS == ret)
+  {
+    ObResultCode result;
+    ret = result.deserialize(data_buff.get_data(),
+        data_buff.get_position(), return_start_pos);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "deserialize ObResultCode(report tablet result) failed: ret[%d].", ret);
+    }
+    else if (OB_SUCCESS != result.result_code_)
+    {
+      TBSYS_LOG(ERROR, "report Tablet failed, the RootServer returned error: ret[%d].",
+          result.result_code_);
+      ret = result.result_code_;
+    }
+  }
+
+  return ret;
+}
+
+int ObRootServerRpcStub::register_server(const common::ObServer & server,
     const bool is_merge_server, int32_t& status)
 {
   const int64_t register_timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
   int ret = OB_SUCCESS;
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
@@ -363,7 +394,7 @@ int ObRootServerRpcStub::register_server(const common::ObServer & server,
   // step 2. send request for fetch new schema
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(root_server_, 
+    ret = rpc_frame_->send_request(root_server_,
         OB_SERVER_REGISTER, DEFAULT_VERSION, register_timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
@@ -371,7 +402,6 @@ int ObRootServerRpcStub::register_server(const common::ObServer & server,
           ",ret=[%d].", ret);
     }
   }
-
 
   // step 3. deserialize the response code
   int64_t pos = 0;
@@ -403,11 +433,11 @@ int ObRootServerRpcStub::register_server(const common::ObServer & server,
 }
 
 
-int ObRootServerRpcStub::report_capacity_info(const common::ObServer &server, 
+int ObRootServerRpcStub::report_capacity_info(const common::ObServer &server,
     const int64_t capacity, const int64_t used)
 {
   const int64_t report_timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
   int ret = OB_SUCCESS;
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
@@ -446,7 +476,7 @@ int ObRootServerRpcStub::report_capacity_info(const common::ObServer &server,
   // step 2. send request for fetch new schema
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(root_server_, 
+    ret = rpc_frame_->send_request(root_server_,
         OB_REPORT_CAPACITY_INFO, DEFAULT_VERSION, report_timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
@@ -476,8 +506,8 @@ int ObRootServerRpcStub::report_capacity_info(const common::ObServer &server,
 }
 
 int ObRootServerRpcStub::dest_load_tablet(
-    const common::ObServer &dest_server, 
-    const common::ObRange &range,
+    const common::ObServer &dest_server,
+    const common::ObNewRange &range,
     const int32_t dest_disk_no,
     const int64_t tablet_version,
     const uint64_t crc_sum,
@@ -485,7 +515,7 @@ int ObRootServerRpcStub::dest_load_tablet(
     const char (*path)[common::OB_MAX_FILE_NAME_LENGTH])
 {
   const int64_t timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
   int ret = OB_SUCCESS;
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
@@ -534,7 +564,7 @@ int ObRootServerRpcStub::dest_load_tablet(
     }
   }
 
-  // number of sstable files 
+  // number of sstable files
   if(OB_SUCCESS == ret)
   {
     ret = serialization::encode_vi64(data_buff.get_data(), data_buff.get_capacity(),
@@ -558,20 +588,20 @@ int ObRootServerRpcStub::dest_load_tablet(
         break;
       }
     }
-  } 
+  }
 
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(dest_server, 
+    ret = rpc_frame_->send_request(dest_server,
         OB_MIGRATE_OVER, DEFAULT_VERSION, timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(ERROR, "send request to chunkserver for dest load tablet"
+      TBSYS_LOG(WARN, "send request to chunkserver for dest load tablet"
           ",ret=[%d].", ret);
     }
     else
     {
-      TBSYS_LOG(INFO,"send request to destination server success"); 
+      TBSYS_LOG(INFO,"send request to destination server success");
     }
   }
 
@@ -596,14 +626,14 @@ int ObRootServerRpcStub::dest_load_tablet(
 
 
 int ObRootServerRpcStub::migrate_over(
-    const common::ObRange &range, 
+    const common::ObNewRange &range,
     const common::ObServer &src_server,
-    const common::ObServer &dest_server, 
+    const common::ObServer &dest_server,
     const bool keep_src,
     const int64_t tablet_version)
 {
   const int64_t timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
   int ret = OB_SUCCESS;
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
@@ -662,7 +692,7 @@ int ObRootServerRpcStub::migrate_over(
   // step 2. send request for report tablet migrate over.
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(root_server_, 
+    ret = rpc_frame_->send_request(root_server_,
         OB_MIGRATE_OVER, DEFAULT_VERSION, timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
@@ -691,26 +721,50 @@ int ObRootServerRpcStub::migrate_over(
   return ret;
 }
 
-int ObRootServerRpcStub::get_update_server(common::ObServer& update_server,bool for_merge /*=false*/)
+int ObRootServerRpcStub::merge_tablets_over(
+  const ObTabletReportInfoList& tablet_list,
+  const bool is_merge_succ)
 {
-  int ret = OB_SUCCESS;
   const int64_t timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
+  int ret = OB_SUCCESS;
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
-  // step 1. send get update server info request
+
+  // step 1. serialize server to data_buff
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(root_server_, 
-                                  for_merge ? OB_GET_UPDATE_SERVER_INFO_FOR_MERGE : OB_GET_UPDATE_SERVER_INFO, 
-                                  DEFAULT_VERSION, timeout, data_buff);
-    if (ret != OB_SUCCESS)
+    ret = serialization::encode_bool(data_buff.get_data(), data_buff.get_capacity(),
+        data_buff.get_position(), is_merge_succ);
+    if (OB_SUCCESS != ret)
     {
-      TBSYS_LOG(ERROR, "send request to root server for get update server addr failed:ret[%d]", ret);
+      TBSYS_LOG(ERROR, "serialize is_merge_succ failed=[%d]", ret);
     }
   }
 
-  // step 2. deserialize restult code
+  if (OB_SUCCESS == ret && is_merge_succ)
+  {
+    ret = tablet_list.serialize(data_buff.get_data(), data_buff.get_capacity(),
+        data_buff.get_position());
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "serialize merged_tablet_list failed=[%d]", ret);
+    }
+  }
+
+  // step 2. send request for report tablet merge over.
+  if (OB_SUCCESS == ret)
+  {
+    ret = rpc_frame_->send_request(root_server_,
+        OB_CS_MERGE_TABLETS_DONE, DEFAULT_VERSION, timeout, data_buff);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "send request to root server for merge tablets over failed"
+          ",ret=[%d].", ret);
+    }
+  }
+
+  // step 3. deserialize the response code
   int64_t pos = 0;
   if (OB_SUCCESS == ret)
   {
@@ -718,7 +772,7 @@ int ObRootServerRpcStub::get_update_server(common::ObServer& update_server,bool 
     ret = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
     if (OB_SUCCESS != ret)
     {
-      TBSYS_LOG(ERROR, "deserialize result_code failed:pos[%ld], ret[%d]", pos, ret);
+      TBSYS_LOG(ERROR, "deserialize result_code failed:pos[%ld], ret[%d].", pos, ret);
     }
     else
     {
@@ -726,72 +780,6 @@ int ObRootServerRpcStub::get_update_server(common::ObServer& update_server,bool 
     }
   }
 
-  // step 3. deserialize update server addr
-  if (OB_SUCCESS == ret)
-  {
-    ret = update_server.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
-    if (ret != OB_SUCCESS)
-    {
-      TBSYS_LOG(ERROR, "deserialize server failed:pos[%ld], ret[%d]", pos, ret);
-    }
-  }
-  return ret;
-}
-
-int ObRootServerRpcStub::get_frozen_time(int64_t frozen_version, int64_t& frozen_time)
-{
-  int ret = OB_SUCCESS;
-  const int64_t timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
-  ObDataBuffer data_buff;
-  ret = get_frame_buffer(data_buff);
-  // step 1. encode frozen version and send request
-  if (OB_SUCCESS == ret)
-  {
-    ret = common::serialization::encode_vi64(data_buff.get_data(), data_buff.get_capacity(),
-        data_buff.get_position(), frozen_version);
-    if(OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(WARN, "encode frozen_version faied: frozen_version=%ld", frozen_version);
-    }
-    else
-    {
-      ret = rpc_frame_->send_request(root_server_, OB_UPS_GET_TABLE_TIME_STAMP,
-          DEFAULT_VERSION, timeout, data_buff);
-    }
-
-    if (ret != OB_SUCCESS)
-    {
-      TBSYS_LOG(ERROR, "send request to update server for get timestamp failed:ret[%d]", ret);
-    }
-  }
-
-  // step 2. deserialize restult code
-  int64_t pos = 0;
-  if (OB_SUCCESS == ret)
-  {
-    ObResultCode result_code;
-    ret = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(ERROR, "deserialize result_code failed:pos[%ld], ret[%d]", pos, ret);
-    }
-    else
-    {
-      ret = result_code.result_code_;
-    }
-  }
-
-  // step 3. deserialize update server addr
-  if (OB_SUCCESS == ret)
-  {
-    ret = common::serialization::decode_vi64(data_buff.get_data(),
-        data_buff.get_position(), pos, &frozen_time);
-    if (ret != OB_SUCCESS)
-    {
-      TBSYS_LOG(ERROR, "deserialize frozen_time failed:ret[%d]", ret);
-    }
-  }
   return ret;
 }
 
@@ -799,13 +787,13 @@ int ObRootServerRpcStub::get_merge_delay_interval(int64_t &interval) const
 {
   int ret = OB_SUCCESS;
   const int64_t timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
   // step 1. send get update server info request
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(root_server_, 
+    ret = rpc_frame_->send_request(root_server_,
                                   OB_GET_MERGE_DELAY_INTERVAL,
                                   DEFAULT_VERSION, timeout, data_buff);
     if (ret != OB_SUCCESS)
@@ -830,7 +818,7 @@ int ObRootServerRpcStub::get_merge_delay_interval(int64_t &interval) const
     }
   }
 
-  // step 3. deserialize 
+  // step 3. deserialize
   if (OB_SUCCESS == ret)
   {
     ret = serialization::decode_vi64(data_buff.get_data(), data_buff.get_position(), pos,&interval);
@@ -851,7 +839,7 @@ int ObRootServerRpcStub::async_heartbeat(const ObServer & client)
   // step 1. serialize client server addr to data_buff
   if (OB_SUCCESS == ret)
   {
-    ret = client.serialize(data_buff.get_data(), 
+    ret = client.serialize(data_buff.get_data(),
         data_buff.get_capacity(), data_buff.get_position());
     if (OB_SUCCESS != ret)
     {
@@ -862,7 +850,7 @@ int ObRootServerRpcStub::async_heartbeat(const ObServer & client)
   // step 2. rpc frame send request and receive the response
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->post_request(root_server_, 
+    ret = rpc_frame_->post_request(root_server_,
         OB_HEARTBEAT, DEFAULT_VERSION, data_buff);
     if (OB_SUCCESS != ret)
     {
@@ -879,7 +867,7 @@ int ObRootServerRpcStub::get_migrate_dest_location(
     const int64_t occupy_size, int32_t &dest_disk_no, ObString &dest_path)
 {
   const int64_t timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
   int ret = OB_SUCCESS;
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
@@ -898,7 +886,7 @@ int ObRootServerRpcStub::get_migrate_dest_location(
   // step 2. send request for report tablet migrate over.
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(root_server_, 
+    ret = rpc_frame_->send_request(root_server_,
         OB_CS_GET_MIGRATE_DEST_LOC, DEFAULT_VERSION, timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
@@ -951,7 +939,7 @@ int ObRootServerRpcStub::get_migrate_dest_location(
 int ObRootServerRpcStub::get_last_frozen_memtable_version(int64_t &last_version)
 {
   const int64_t timeout = ObChunkServerMain::get_instance()->
-    get_chunk_server().get_param().get_network_time_out() ;  // send_request timeout us
+    get_chunk_server().get_config().get_network_timeout() ;  // send_request timeout us
   int ret = OB_SUCCESS;
   ObDataBuffer data_buff;
   ret = get_frame_buffer(data_buff);
@@ -961,7 +949,7 @@ int ObRootServerRpcStub::get_last_frozen_memtable_version(int64_t &last_version)
   // step 2. send request for report tablet migrate over.
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(root_server_, 
+    ret = rpc_frame_->send_request(root_server_,
         OB_UPS_GET_LAST_FROZEN_VERSION, DEFAULT_VERSION, timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
@@ -1000,7 +988,7 @@ int ObRootServerRpcStub::get_last_frozen_memtable_version(int64_t &last_version)
   return ret;
 }
 
-int ObRootServerRpcStub::scan(const ObServer & server, const int64_t timeout, 
+int ObRootServerRpcStub::scan(const ObServer & server, const int64_t timeout,
                              const ObScanParam & param, ObScanner & result)
 {
   ObDataBuffer data_buff;
@@ -1012,7 +1000,7 @@ int ObRootServerRpcStub::scan(const ObServer & server, const int64_t timeout,
   else
   {
     // step 1. serialize ObGetParam to the data_buff
-    ret = param.serialize(data_buff.get_data(), data_buff.get_capacity(), 
+    ret = param.serialize(data_buff.get_data(), data_buff.get_capacity(),
         data_buff.get_position());
     if (OB_SUCCESS != ret)
     {
@@ -1020,17 +1008,17 @@ int ObRootServerRpcStub::scan(const ObServer & server, const int64_t timeout,
     }
   }
 
-  // step 2. send request for get data 
+  // step 2. send request for get data
   if (OB_SUCCESS == ret)
   {
-    ret = rpc_frame_->send_request(server, OB_SCAN_REQUEST, DEFAULT_VERSION, 
+    ret = rpc_frame_->send_request(server, OB_SCAN_REQUEST, DEFAULT_VERSION,
         timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
       TBSYS_LOG(WARN, "get data failed from server:ret[%d]", ret);
     }
   }
-  
+
   // step 3. deserialize the response result
   int64_t pos = 0;
   if (OB_SUCCESS == ret)
@@ -1046,8 +1034,8 @@ int ObRootServerRpcStub::scan(const ObServer & server, const int64_t timeout,
       TBSYS_LOG(ERROR,"scan failed,ret[%d]",ret);
     }
   }
-  
-  // step 4. deserialize the scanner 
+
+  // step 4. deserialize the scanner
   if (OB_SUCCESS == ret)
   {
     result.clear();
@@ -1061,23 +1049,23 @@ int ObRootServerRpcStub::scan(const ObServer & server, const int64_t timeout,
 }
 
 
-int ObRootServerRpcStub::get_tablet_info(const common::ObSchemaManagerV2& schema, 
-    const uint64_t table_id, const ObRange& range, ObTabletLocation location [],int32_t& size)
+int ObRootServerRpcStub::get_tablet_info(const common::ObSchemaManagerV2& schema,
+    const uint64_t table_id, const ObNewRange& range, ObTabletLocation location [],int32_t& size)
 {
   int ret = OB_SUCCESS;
   int32_t index = 0;
   const ObChunkServer& chunk_server = ObChunkServerMain::get_instance()->get_chunk_server();
-  const int64_t timeout = chunk_server.get_param().get_network_time_out();
+  const int64_t timeout = chunk_server.get_config().get_network_timeout();
   if (OB_INVALID_ID == table_id || size <= 0)
   {
     TBSYS_LOG(ERROR,"invalid table id");
     ret = OB_ERROR;
   }
-  
+
   ObScanParam param;
   ObScanner scanner;
   ObString table_name;
-  
+
   const ObTableSchema *table = schema.get_table_schema(table_id);
 
   if (NULL == table)
@@ -1087,9 +1075,9 @@ int ObRootServerRpcStub::get_tablet_info(const common::ObSchemaManagerV2& schema
   }
   else
   {
-    table_name.assign_ptr(const_cast<char *>(table->get_table_name()),strlen(table->get_table_name()));
+    table_name.assign_ptr(const_cast<char *>(table->get_table_name()),static_cast<int32_t>(strlen(table->get_table_name())));
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     param.set(OB_INVALID_ID,table_name,range); //use table name
@@ -1100,17 +1088,15 @@ int ObRootServerRpcStub::get_tablet_info(const common::ObSchemaManagerV2& schema
   {
     TBSYS_LOG(ERROR,"get tablet from rootserver failed:[%d]",ret);
   }
-  
+
   ObServer server;
   char tmp_buf[32];
-  ObString start_key;
-  ObString end_key; 
   ObCellInfo * cell = NULL;
-  ObScannerIterator iter; 
+  ObScannerIterator iter;
   bool row_change = false;
-   
-  if (OB_SUCCESS == ret) 
-  { 
+
+  if (OB_SUCCESS == ret)
+  {
     int64_t ip = 0;
     int64_t port = 0;
     int64_t version = 0;
@@ -1126,15 +1112,13 @@ int ObRootServerRpcStub::get_tablet_info(const common::ObSchemaManagerV2& schema
       }
       else if (row_change)
       {
-        TBSYS_LOG(DEBUG,"row changed,ignore"); 
-        hex_dump(cell->row_key_.ptr(),cell->row_key_.length(),false,TBSYS_LOG_LEVEL_INFO);
-        break; //just get one row        
-      } 
+        TBSYS_LOG(DEBUG,"row :%s changed,ignore", to_cstring(cell->row_key_));
+        break; //just get one row
+      }
       else if (cell != NULL)
       {
-        end_key.assign(cell->row_key_.ptr(), cell->row_key_.length());
-        if ((cell->column_name_.compare("1_port") == 0) 
-            || (cell->column_name_.compare("2_port") == 0) 
+        if ((cell->column_name_.compare("1_port") == 0)
+            || (cell->column_name_.compare("2_port") == 0)
             || (cell->column_name_.compare("3_port") == 0))
         {
           ret = cell->value_.get_int(port);
@@ -1152,23 +1136,21 @@ int ObRootServerRpcStub::get_tablet_info(const common::ObSchemaManagerV2& schema
             cell->column_name_.compare("3_tablet_version") == 0)
         {
           ret = cell->value_.get_int(version);
-          hex_dump(cell->row_key_.ptr(),cell->row_key_.length(),false,TBSYS_LOG_LEVEL_INFO);
-          TBSYS_LOG(DEBUG,"tablet_version is %d",version);
+          TBSYS_LOG(DEBUG,"tablet_version is %ld, rowkey:%s",version, to_cstring(cell->row_key_));
         }
 
         if (OB_SUCCESS == ret)
         {
           if (0 != port && 0 != ip && 0 != version)
           {
-            server.set_ipv4_addr(ip, port);
-            server.to_string(tmp_buf,sizeof(tmp_buf));
-            TBSYS_LOG(INFO,"add tablet s:%s,%ld",tmp_buf,version);
+            server.set_ipv4_addr(static_cast<int32_t>(ip), static_cast<int32_t>(port));
+            TBSYS_LOG(INFO,"add tablet s:%s,%ld", to_cstring(server), version);
             ObTabletLocation addr(version, server);
             location[index++] = addr;
             ip = port = version = 0;
           }
         }
-        else 
+        else
         {
           TBSYS_LOG(ERROR, "check get value failed:ret[%d]", ret);
         }
@@ -1191,4 +1173,3 @@ int ObRootServerRpcStub::get_tablet_info(const common::ObSchemaManagerV2& schema
   }
   return ret;
 }
-

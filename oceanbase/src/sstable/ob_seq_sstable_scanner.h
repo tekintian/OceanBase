@@ -1,19 +1,16 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
+ *  (C) 2010-2011 Taobao Inc.
  *  
- * Version: 5567
+ *  This program is free software; you can redistribute it
+ *  and/or modify it under the terms of the GNU General Public
+ *  License version 2 as published by the Free Software
+ *  Foundation.
  *
- * ob_seq_sstable_scanner.h
+ *  ob_seq_sstablet_scanner.h is for what ...
  *
- * Authors:
+ *  Authors:
  *     qushan <qushan@taobao.com>
- * Changes: 
- *     huating <huating.zmq@taobao.com>
- *
+ *        
  */
 #ifndef OCEANBASE_SSTABLE_SEQ_SSTABLE_SCANNER_H_
 #define OCEANBASE_SSTABLE_SEQ_SSTABLE_SCANNER_H_
@@ -36,7 +33,6 @@ namespace oceanbase
     class ObSSTableReader;
     class ObBlockCache;
     class ObBlockIndexCache;
-    class common::ThreadSpecificBuffer::Buffer;
 
     class ObSeqSSTableScanner : public common::ObIterator
     {
@@ -46,7 +42,7 @@ namespace oceanbase
 
         int add_sstable_reader(ObSSTableReader* reader);
         int set_scan_param(const common::ObScanParam& param, ObBlockCache& block_cache,
-                           ObBlockIndexCache& block_index_cache);
+                           ObBlockIndexCache& block_index_cache, bool not_exit_col_ret_nop = false);
         void cleanup();
       public:
         // Moves the cursor to next cell.
@@ -64,11 +60,12 @@ namespace oceanbase
 
         int32_t cur_iter_idx_;
         int32_t cur_iter_status_;
+        bool not_exit_col_ret_nop_; //whether return nop if columns doesn't exit
 
         ObBlockCache* block_cache_;
         ObBlockIndexCache* block_index_cache_;
 
-        common::ObScanParam scan_param_;
+        const common::ObScanParam* scan_param_;
         ObSSTableScanner sstable_scanner_;
 
         ObSSTableReader* sstable_readers_[MAX_SSTABLE_SCANNER_NUM];

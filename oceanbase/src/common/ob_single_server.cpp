@@ -1,25 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_single_server.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
+#include "ob_atomic.h"
 #include "ob_single_server.h"
+#include "ob_trace_id.h"
+#include "ob_profile_log.h"
+#include "ob_profile_type.h"
+#include "ob_result.h"
+#include "utility.h"
+#include "tblog.h"
 
 namespace oceanbase
 {
   namespace common
   {
-    ObSingleServer::ObSingleServer() : thread_count_(0), task_queue_size_(100), min_left_time_(0)
+    ObSingleServer::ObSingleServer() : thread_count_(0), task_queue_size_(100), min_left_time_(0), drop_packet_count_(0), host_()
     {
     }
 
@@ -31,6 +23,11 @@ namespace oceanbase
     {
       if (thread_count_ > 0)
       {
+        IpPort ip_port;
+        ip_port.ip_ = static_cast<uint16_t>(local_ip_ & 0x0000FFFF);
+        ip_port.port_ = static_cast<uint16_t>(port_);
+        default_task_queue_thread_.set_ip_port(ip_port);
+        default_task_queue_thread_.set_host(host_);
         default_task_queue_thread_.setThreadParameter(thread_count_, this, NULL);
         default_task_queue_thread_.start();
       }
@@ -50,6 +47,9 @@ namespace oceanbase
         default_task_queue_thread_.stop();
         wait_for_queue();
       }
+      TBSYS_LOG(WARN, "task threads stoped.");
+      ObBaseServer::destroy();
+      TBSYS_LOG(WARN, "libeasy timer thread stoped.");
     }
 
     int ObSingleServer::set_min_left_time(const int64_t left_time)
@@ -82,6 +82,26 @@ namespace oceanbase
 
       return ret;
     }
+    void ObSingleServer::set_self_to_thread_queue(const ObServer & host)
+    {
+      host_ = host;
+    }
+
+    int ObSingleServer::set_io_thread_count(const int io_thread_count)
+    {
+      int ret = OB_SUCCESS;
+
+      if (io_thread_count < 1)
+      {
+        ret = OB_ERROR;
+        TBSYS_LOG(WARN, "io thread count should bigger than one, you provide: %d", io_thread_count);
+      }
+      else
+      {
+        io_thread_count_ = io_thread_count;
+      }
+      return ret;
+    }
 
     int ObSingleServer::set_default_queue_size(const int task_queue_size)
     {
@@ -95,53 +115,58 @@ namespace oceanbase
       {
         task_queue_size_ = task_queue_size;
         if (task_queue_size_ > MAX_TASK_QUEUE_SIZE)
-          TBSYS_LOG(WARN, "huge task queue size(%d), make sure this is what you want.", task_queue_size_);
+        {
+          TBSYS_LOG(TRACE, "huge task queue size(%d), make sure this is what you want.", task_queue_size_);
+        }
       }
-
       return ret;
     }
 
-    tbnet::IPacketHandler::HPRetCode ObSingleServer::handlePacket(tbnet::Connection* connection, tbnet::Packet* packet)
+    uint64_t ObSingleServer::get_drop_packet_count(void) const
     {
-      tbnet::IPacketHandler::HPRetCode rc = tbnet::IPacketHandler::FREE_CHANNEL;
-      if (!packet->isRegularPacket())
-      {
-        TBSYS_LOG(WARN, "control packet, packet code: %d", ((tbnet::ControlPacket*)packet)->getCommand());
-      } else
-      {
-        ObPacket* req = (ObPacket*) packet;
-        req->set_connection(connection);
-
-        if (thread_count_ == 0)
-        {
-          handle_request(req);
-        } else
-        {
-          bool ps = default_task_queue_thread_.push(req, task_queue_size_, false);
-          if (!ps)
-          {
-            if (!handle_overflow_packet(req))
-            {
-              TBSYS_LOG(WARN, "overflow packet dropped, packet code: %d", req->getPCode());
-            }
-            rc = tbnet::IPacketHandler::KEEP_CHANNEL;
-          }
-        }
-      }
-
-      return rc;
+      return drop_packet_count_;
     }
 
-    bool ObSingleServer::handleBatchPacket(tbnet::Connection *connection, tbnet::PacketQueue &packetQueue)
+    size_t ObSingleServer::get_current_queue_size(void) const
     {
+      return default_task_queue_thread_.size();
+    }
+
+    int ObSingleServer::handlePacket(ObPacket* packet)
+    {
+      int rc = OB_SUCCESS;
+      ObPacket* req = packet;
+      TBSYS_LOG(DEBUG, "receive packet, pcode=%d channel=%d", req->get_packet_code(), req->get_channel_id());
+      if (thread_count_ == 0)
+      {
+        handle_request(req);
+      }
+      else
+      {
+        bool ps = default_task_queue_thread_.push(req, task_queue_size_, false, false);
+        if (!ps)
+        {
+          if (!handle_overflow_packet(req))
+          {
+            TBSYS_LOG(WARN, "overflow packet dropped, packet code: %d", req->get_packet_code());
+          }
+          rc = OB_QUEUE_OVERFLOW;
+        }
+      }
+      return rc;
+    }
+    int ObSingleServer::handleBatchPacket(ObPacketQueue& packetQueue)
+    {
+      UNUSED(packetQueue);
+      return OB_SUCCESS;
+    /*
+      int ret = OB_SUCCESS;
       ObPacketQueue temp_queue;
 
-      ObPacket *packet= (ObPacket*)packetQueue.getPacketList();
+      ObPacket *packet= packetQueue.get_packet_list();
 
       while (packet != NULL)
       {
-        packet->set_connection(connection);
-
         if (thread_count_ == 0)
         {
           handle_request(packet);
@@ -151,7 +176,7 @@ namespace oceanbase
           temp_queue.push(packet); // the task queue will free this packet
         }
 
-        packet = (ObPacket*)packet->getNext(); // handle as much as we can
+        packet = (ObPacket*)packet->get_next(); // handle as much as we can
       }
 
       if (temp_queue.size() > 0)
@@ -159,10 +184,11 @@ namespace oceanbase
         default_task_queue_thread_.pushQueue(temp_queue, task_queue_size_); // if queue is full, this will block
       }
 
-      return true;
+      return ret;
+    */
     }
 
-    bool ObSingleServer::handlePacketQueue(tbnet::Packet *packet, void *args)
+    bool ObSingleServer::handlePacketQueue(ObPacket *packet, void *args)
     {
       UNUSED(args);
       ObPacket* req = (ObPacket*) packet;
@@ -173,12 +199,16 @@ namespace oceanbase
       {
         int64_t receive_time = req->get_receive_ts();
         int64_t current_ts = tbsys::CTimeUtil::getTime();
+        PROFILE_LOG(DEBUG, PACKET_RECEIVED_TIME, receive_time);
+        PROFILE_LOG(DEBUG, WAIT_TIME_US_IN_QUEUE, current_ts - receive_time);
         if ((current_ts - receive_time) + min_left_time_ > source_timeout)
         {
+          atomic_inc(&drop_packet_count_);
           TBSYS_LOG(WARN, "packet block time: %ld(us), plus min left time: %ld(us) "
-              "exceed timeout: %ld(us), packet id: %d, dropped", 
-              (current_ts - receive_time), min_left_time_, source_timeout, packet->getPCode());
-          ret = true; 
+              "exceed timeout: %ld(us), current queue size:%ld, packet id: %d, dropped",
+              (current_ts - receive_time), min_left_time_, source_timeout, default_task_queue_thread_.size(),
+              packet->get_packet_code());
+          ret = true;
         }
       }
 
@@ -201,25 +231,68 @@ namespace oceanbase
       }
       else
       {
+        easy_addr_t addr = get_easy_addr(request->get_request());
+        const int32_t packet_code = request->get_packet_code();
         int ret = do_request(request);
         if (ret != OB_SUCCESS)
         {
-          TBSYS_LOG(WARN, "request process failed, pcode: %d, ret: %d", request->get_packet_code(), ret);
+          TBSYS_LOG(WARN, "request process failed, pcode: %d, ret: %d, peer is %s",
+              packet_code, ret, inet_ntoa_r(addr));
         }
       }
     }
 
     bool ObSingleServer::handle_overflow_packet(ObPacket* base_packet)
     {
-      UNUSED(base_packet);
+      //send error packet to client
+      int ret = OB_SUCCESS;
+      static const int MY_VERSION = 1;
+      common::ObResultCode result_msg;
+      ThreadSpecificBuffer::Buffer* my_buffer = thread_buffer_.get_buffer();
+      ObDataBuffer out_buff;
+      result_msg.result_code_ = OB_DISCARD_PACKET;
+      easy_addr_t addr = get_easy_addr(base_packet->get_request());
+      if (MY_VERSION != base_packet->get_api_version())
+      {
+        result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if (NULL != my_buffer && out_buff.set_data(my_buffer->current(), my_buffer->remain()))
+      {
+        ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(ERROR, "result message serialize failed, err: %d", ret);
+        }
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "failed initialize out_buff, buffer=%p", my_buffer);
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = send_response(base_packet->get_packet_code() + 1, MY_VERSION, out_buff,
+                            base_packet->get_request(), base_packet->get_channel_id());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "failed to send response to client(%s)", inet_ntoa_r(addr));
+        }
+      }
+      else
+      {
+        easy_request_wakeup(base_packet->get_request());
+      }
       return false;
     }
 
     void ObSingleServer::handle_timeout_packet(ObPacket* base_packet)
     {
-      UNUSED(base_packet);
+      if (NULL != base_packet)
+      {
+        easy_request_wakeup(base_packet->get_request());
+      }
     }
 
   } /* common */
 } /* oceanbase */
-

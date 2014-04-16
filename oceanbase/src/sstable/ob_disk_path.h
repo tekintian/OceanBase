@@ -1,19 +1,16 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
+ * (C) 2010-2011 Taobao Inc.
  *  
- * Version: 5567
+ *  This program is free software; you can redistribute it
+ *  and/or modify it under the terms of the GNU General Public
+ *  License version 2 as published by the Free Software
+ *  Foundation.
  *
- * ob_disk_path.h
+ *         ob_disk_path.h is for what ...
  *
- * Authors:
- *     qushan <qushan@taobao.com>
- * Changes: 
- *     huating <huating.zmq@taobao.com>
- *
+ *  Authors:
+ *     qushan < qushan@taobao.com >
+ *        
  */
 
 #ifndef OCEANBASE_SSTABLE_DISK_PATH_H__
@@ -22,6 +19,7 @@
 #include <stdint.h>
 #include <dirent.h>
 #include "common/serialization.h"
+#include "common/murmur_hash.h"
 
 namespace
 {
@@ -51,6 +49,11 @@ namespace oceanbase
         return (sstable_file_id_ == rhs.sstable_file_id_) &&
           (sstable_file_offset_ == rhs.sstable_file_offset_);
       }
+
+      int64_t hash() const
+      {
+        return common::murmurhash2(this, sizeof(ObSSTableId), 0);
+      };
 
       int serialize(char *buf,int64_t buf_len,int64_t& pos) const
       {
@@ -106,14 +109,29 @@ namespace oceanbase
      * @param path_len length of %path
      */
     int get_sstable_directory(const int32_t disk_no, char *path, const int64_t path_len);
+    int get_sstable_directory(const char* disk_path, char *path, const int64_t path_len);
 
     int get_recycle_directory(const int32_t disk_no, char *path, const int64_t path_len);
+    int get_recycle_path(const ObSSTableId& sstable_id, char *path, const int64_t path_len);
+    int get_recycle_directory(const char* disk_path, char *path, const int64_t path_len);
 
     /**
      * get tablet index file path
      */
+    int get_tmp_meta_path(const int32_t disk_no, char *path, const int32_t path_len);
     int get_meta_path(const int32_t disk_no, const bool current, char *path, const int32_t path_len);
     int get_meta_path(const int64_t version, const int32_t disk_no, const bool current, char *path, const int32_t path_len);
+
+    /**
+     * get sstable file bypass directory base on disk no of sstable
+     * @param disk_no disk no where sstable file in.
+     * @param [out] path sstable file path
+     * @param path_len length of %path
+     */
+    int get_bypass_sstable_directory(const int32_t disk_no, char *path, const int64_t path_len);
+    int get_bypass_sstable_directory(const char* disk_path, char *path, const int64_t path_len);
+    int get_bypass_sstable_path(const int32_t disk_no, 
+      const char* sstable_name, char *path, const int64_t path_len);
 
     int idx_file_name_filter(const struct dirent *d);
     int bak_idx_file_name_filter(const struct dirent *d);

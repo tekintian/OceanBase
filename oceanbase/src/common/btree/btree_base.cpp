@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./btree_base.cpp for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #include "btree_node.h"
 #include "btree_read_param.h"
 #include "btree_write_param.h"
@@ -264,8 +249,8 @@ namespace oceanbase
           if (handle.direction_ == 0) handle.direction_ = ((param->found_ >= to_param->found_) ? 1 : -1);
           // from
           if (param->node_pos_[level] == -1 ||
-              (handle.direction_ > 0 && (handle.from_exclude_ && param->found_ == 0 || param->found_ < 0)) ||
-              (handle.direction_ < 0 && (handle.from_exclude_ && param->found_ == 0 || param->found_ > 0)))
+              (handle.direction_ > 0 && ((handle.from_exclude_ && param->found_ == 0) || param->found_ < 0)) ||
+              (handle.direction_ < 0 && ((handle.from_exclude_ && param->found_ == 0) || param->found_ > 0)))
           {
             if (direction == 0)
               handle.is_eof_ = 1;
@@ -273,8 +258,8 @@ namespace oceanbase
               handle.is_eof_ = pos_move_next(param, handle.direction_);
           }
           // to
-          if ((handle.direction_ > 0 && (handle.to_exclude_ && to_param->found_ == 0 || to_param->found_ > 0)) ||
-              (handle.direction_ < 0 && (handle.to_exclude_ && to_param->found_ == 0 || to_param->found_ < 0)))
+          if ((handle.direction_ > 0 && ((handle.to_exclude_ && to_param->found_ == 0) || to_param->found_ > 0)) ||
+              (handle.direction_ < 0 && ((handle.to_exclude_ && to_param->found_ == 0) || to_param->found_ < 0)))
             handle.to_exclude_ = 1;
           else
             handle.to_exclude_ = 0;
@@ -393,7 +378,7 @@ namespace oceanbase
 
               if (param->node_pos_[level+1] < 0)
               {
-                param->node_pos_[level+1] = param->node_[level+1]->get_size() - 1;
+                param->node_pos_[level+1] = static_cast<int16_t>(param->node_[level+1]->get_size() - 1);
                 OCEAN_BTREE_CHECK_TRUE(param->node_pos_[level+1] >= 0,
                                        "param->node_pos: %d, level: %d, size: %d", param->node_pos_[level+1], level + 1,
                                        param->node_[level+1]->get_size());
@@ -452,7 +437,7 @@ namespace oceanbase
 
           // set path
           param.node_[i] = root;
-          param.node_pos_[i] = pos;
+          param.node_pos_[i] = static_cast<int16_t>(pos);
           param.node_length_ ++;
           if (i == depth - 1)
           {
@@ -568,7 +553,7 @@ namespace oceanbase
               if (ret != ERROR_CODE_OK)
                 break;
 
-              proot->tree_depth_[id] = params[id].node_length_;
+              proot->tree_depth_[id] = static_cast<int8_t>(params[id].node_length_);
               if (params[id].new_root_node_)
                 proot->root_[id] = params[id].new_root_node_;
               else
@@ -721,7 +706,7 @@ namespace oceanbase
               if (ret != ERROR_CODE_OK)
                 break;
 
-              proot->tree_depth_[id] = params[id].node_length_;
+              proot->tree_depth_[id] = static_cast<int8_t>(params[id].node_length_);
               if (params[id].new_root_node_)
                 proot->root_[id] = params[id].new_root_node_;
               else
@@ -842,7 +827,7 @@ namespace oceanbase
       // 叶节点没满, 直接插入
       if (node && node->get_size() < CONST_NODE_OBJECT_COUNT)
       {
-        ret = node->add_pair(new_pos, key, value, key_compare_[param.tree_id]);
+        ret = node->add_pair(static_cast<int16_t>(new_pos), key, value, key_compare_[param.tree_id]);
         OCEAN_BTREE_CHECK_TRUE(ERROR_CODE_OK == ret, "ret:%d", ret);
       }
       else if (node)
@@ -879,7 +864,7 @@ namespace oceanbase
           if (ERROR_CODE_OK == ret)
           {
             // 插入到当前的node上
-            ret = node->add_pair(new_pos, key, value, key_compare_[param.tree_id]);
+            ret = node->add_pair(static_cast<int16_t>(new_pos), key, value, key_compare_[param.tree_id]);
             OCEAN_BTREE_CHECK_TRUE(ERROR_CODE_OK == ret, "ret:%d", ret);
           }
         }
@@ -908,13 +893,13 @@ namespace oceanbase
               // 插入新的key,value
               if (node->get_size() > new_pos)
               {
-                ret = node->add_pair(new_pos, key, value, key_compare_[param.tree_id]);
+                ret = node->add_pair(static_cast<int16_t>(new_pos), key, value, key_compare_[param.tree_id]);
                 OCEAN_BTREE_CHECK_TRUE(ERROR_CODE_OK == ret, "ret:%d", ret);
               }
               else
               {
                 pos = new_pos - node->get_size();
-                ret = new_node->add_pair(pos, key, value, key_compare_[param.tree_id]);
+                ret = new_node->add_pair(static_cast<int16_t>(pos), key, value, key_compare_[param.tree_id]);
                 OCEAN_BTREE_CHECK_TRUE(ERROR_CODE_OK == ret, "ret:%d", ret);
               }
             }
@@ -1018,7 +1003,7 @@ namespace oceanbase
           next_node = copy_next_node_for_write(handle, param, level);
           if (NULL != next_node)
           {
-            ret = next_node->remove_pair(new_pos, romoved_pair);
+            ret = next_node->remove_pair(static_cast<int16_t>(new_pos), romoved_pair);
             OCEAN_BTREE_CHECK_TRUE(ERROR_CODE_OK == ret, "ret:%d", ret);
           }
         }
@@ -1137,7 +1122,7 @@ namespace oceanbase
       {
         BtreeNode *parent = param.node_[level-1];
         int32_t pos = param.node_pos_[level-1];
-        BtreeKeyValuePair *pair = parent->get_next_pair(pos);
+        BtreeKeyValuePair *pair = parent->get_next_pair(static_cast<int16_t>(pos));
 
         // 最后一个pos
         if (NULL == pair)
@@ -1179,7 +1164,7 @@ namespace oceanbase
           node = param.next_node_[level];
           if (node)
           {
-            int32_t ret = parent->set_pair(pos + 1, NULL, reinterpret_cast<char*>(node),
+            int32_t ret = parent->set_pair(static_cast<int16_t>(pos + 1), NULL, reinterpret_cast<char*>(node),
                                            BtreeNode::UPDATE_VALUE,
                                            key_compare_[param.tree_id]);
             OCEAN_BTREE_CHECK_TRUE(ERROR_CODE_OK == ret, "ret:%d", ret);
@@ -1270,12 +1255,12 @@ namespace oceanbase
         if (parent && first_key)
         {
           // key是引用的
-          old_key = parent->get_pair(pos);
+          old_key = parent->get_pair(static_cast<int16_t>(pos));
           if (key_allocator_ && old_key)
           {
             update_key_ref_count(handle, old_key->key_, first_key->key_);
           }
-          ret = parent->set_pair(pos, first_key->key_, reinterpret_cast<char*>(node),
+          ret = parent->set_pair(static_cast<int16_t>(pos), first_key->key_, reinterpret_cast<char*>(node),
                                  BtreeNode::UPDATE_KEY | BtreeNode::UPDATE_VALUE,
                                  key_compare_[param.tree_id]);
           OCEAN_BTREE_CHECK_TRUE(ERROR_CODE_OK == ret, "ret:%d", ret);
@@ -1397,7 +1382,7 @@ namespace oceanbase
         int32_t size = root->get_size();
         for(int32_t i = 0; i < size; i++)
         {
-          pair = root->get_pair(i);
+          pair = root->get_pair(static_cast<int16_t>(i));
           if (pair)
           {
             if (key_allocator_)
@@ -1538,4 +1523,3 @@ namespace oceanbase
 
   } // end namespace common
 } // end namespace oceanbase
-

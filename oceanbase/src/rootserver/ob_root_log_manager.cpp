@@ -1,36 +1,11 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_root_log_manager.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
 #include "common/ob_define.h"
 #include "common/ob_log_dir_scanner.h"
 #include "common/file_utils.h"
 #include "common/ob_log_reader.h"
+#include "common/ob_direct_log_reader.h"
 #include "common/file_directory_utils.h"
 #include "common/ob_log_entry.h"
 #include "ob_root_log_manager.h"
-
-namespace
-{
-  const int64_t DEFAULT_LOG_SIZE_MB = 64; // 64MB
-  const int64_t DEFAULT_LOG_SYNC_TYPE = 0;
-
-  const char* STR_ROOT_SECTION = "root_server";
-  const char* OBRT_LOG_DIR_PATH = "log_dir_path";
-  const char* OBRT_LOG_SIZE_MB = "log_size_mb";
-  const char* OBRT_LOG_SYNC_TYPE = "log_sync_type";
-}
 
 namespace oceanbase
 {
@@ -38,7 +13,9 @@ namespace oceanbase
   {
     using namespace common;
     const int ObRootLogManager::UINT64_MAX_LEN = 32;
-    ObRootLogManager::ObRootLogManager() : ckpt_id_(0), replay_point_(0), max_log_id_(0), rt_server_status_(0), is_initialized_(false), is_log_dir_empty_(false)
+    ObRootLogManager::ObRootLogManager()
+      : ckpt_id_(0), replay_point_(0), max_log_id_(0), rt_server_status_(0),
+        is_initialized_(false), is_log_dir_empty_(false)
     {
     }
 
@@ -46,8 +23,11 @@ namespace oceanbase
     {
     }
 
-    int ObRootLogManager::init(ObRootServer2* root_server, common::ObSlaveMgr* slave_mgr)
+    int ObRootLogManager::init(ObRootServer2* root_server, common::ObSlaveMgr* slave_mgr, const common::ObServer* server)
     {
+      OB_ASSERT(root_server);
+      OB_ASSERT(slave_mgr);
+      OB_ASSERT(server);
       int ret = OB_SUCCESS;
 
       if (is_initialized_)
@@ -58,19 +38,20 @@ namespace oceanbase
 
       root_server_ = root_server;
       log_worker_.set_root_server(root_server_);
+      log_worker_.set_balancer(root_server_->get_balancer());
       log_worker_.set_log_manager(this);
 
-      const char* log_dir = TBSYS_CONFIG.getString(STR_ROOT_SECTION, OBRT_LOG_DIR_PATH);
+      const char* log_dir = root_server_->get_config().commit_log_dir;
       if (OB_SUCCESS == ret)
       {
         if (NULL == log_dir)
         {
-          TBSYS_LOG(ERROR, "log directory is null, section: %s, name: %s", STR_ROOT_SECTION, OBRT_LOG_DIR_PATH);
+          TBSYS_LOG(ERROR, "commit log directory is null");
           ret = OB_INVALID_ARGUMENT;
         }
         else
         {
-          int log_dir_len = strlen(log_dir);
+          int log_dir_len = static_cast<int32_t>(strlen(log_dir));
           if (log_dir_len >= OB_MAX_FILE_NAME_LENGTH)
           {
             TBSYS_LOG(ERROR, "Argument is invalid[log_dir_len=%d log_dir=%s]", log_dir_len, log_dir);
@@ -138,7 +119,7 @@ namespace oceanbase
             {
               if (min_log_id > ckpt_id_ + 1)
               {
-                TBSYS_LOG(ERROR, "missing log file[min_log_id=%lu ckeck_point=%lu", min_log_id, ckpt_id_);
+                TBSYS_LOG(ERROR, "missing log file[min_log_id=%lu check_point=%lu", min_log_id, ckpt_id_);
                 ret = OB_ERROR;
               }
               else
@@ -162,10 +143,10 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        int64_t log_file_max_size = TBSYS_CONFIG.getInt(STR_ROOT_SECTION, OBRT_LOG_SIZE_MB, DEFAULT_LOG_SIZE_MB) * 1000 * 1000;
-        int64_t log_sync_type = TBSYS_CONFIG.getInt(STR_ROOT_SECTION, OBRT_LOG_SYNC_TYPE, DEFAULT_LOG_SYNC_TYPE);
+        int64_t log_file_max_size = root_server_->get_config().max_commit_log_size;
+        int64_t log_sync_type = root_server_->get_config().commit_log_sync_type;
 
-        ret = ObLogWriter::init(log_dir, log_file_max_size, slave_mgr, log_sync_type);
+        ret = ObLogWriter::init(log_dir, log_file_max_size, slave_mgr, log_sync_type, NULL, server);
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(ERROR, "ObLogWriter init failed[ret=%d]", ret);
@@ -178,6 +159,29 @@ namespace oceanbase
       }
 
       return ret;
+    }
+
+    int ObRootLogManager::write_log_hook(const bool is_master,
+                                         const ObLogCursor start_cursor, const ObLogCursor end_cursor,
+                                         const char* log_data, const int64_t len)
+    {
+      int err = OB_SUCCESS;
+      UNUSED(is_master);
+      UNUSED(log_data);
+      if (len > 0)
+      {
+        if (last_disk_elapse_ > disk_warn_threshold_us_)
+        {
+          TBSYS_LOG(WARN, "last_disk_elapse_[%ld] > disk_warn_threshold_us[%ld], cursor=[%s,%s], len=%ld",
+                    last_disk_elapse_, disk_warn_threshold_us_, to_cstring(start_cursor), to_cstring(end_cursor), len);
+        }
+
+        if (last_net_elapse_ > net_warn_threshold_us_)
+        {
+          TBSYS_LOG(WARN, "last_net_elapse_[%ld] > net_warn_threshold_us[%ld]", last_net_elapse_, net_warn_threshold_us_);
+        }
+      }
+      return err;
     }
 
     int ObRootLogManager::add_slave(const common::ObServer& server, uint64_t &new_log_file_id)
@@ -199,6 +203,7 @@ namespace oceanbase
         }
         else
         {
+          tbsys::CThreadGuard log_guard(get_log_sync_mutex());
           ret = switch_log_file(new_log_file_id);
           if (ret != OB_SUCCESS)
           {
@@ -214,7 +219,6 @@ namespace oceanbase
     {
       TBSYS_LOG(INFO, "[NOTICE] after recovery checkpointing");
       root_server_->start_threads();
-      root_server_->wait_init_finished();
       TBSYS_LOG(INFO, "[NOTICE] background threads started and finished init");
       return OB_SUCCESS;
     }
@@ -224,6 +228,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
+      ObDirectLogReader direct_reader;
       ObLogReader log_reader;
 
       char* log_data = NULL;
@@ -258,7 +263,7 @@ namespace oceanbase
         }
         if (ret == OB_SUCCESS)
         {
-          ret = log_reader.init(log_dir_, replay_point_, 0, false);
+          ret = log_reader.init(&direct_reader, log_dir_, replay_point_, 0, false);
           if (ret != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "ObLogReader init failed, ret=%d", ret);
@@ -273,22 +278,23 @@ namespace oceanbase
 
             while (ret == OB_SUCCESS)
             {
-              set_cur_log_seq(seq);
-
               if (OB_LOG_NOP != cmd)
               {
                 ret = log_worker_.apply(cmd, log_data, log_length);
-
                 if (ret != OB_SUCCESS)
                 {
-                  TBSYS_LOG(ERROR, "apply log failed, command: %d", cmd);
+                  TBSYS_LOG(ERROR, "apply log failed:command[%d], ret[%d]", cmd, ret);
+                  //WARNING: master root server not exit when apply log failed
+                  // ::exit(OB_FATAL_EXIT);
                 }
               }
-
-              ret = log_reader.read_log(cmd, seq, log_data, log_length);
-              if (OB_FILE_NOT_EXIST != ret && OB_READ_NOTHING != ret && OB_SUCCESS != ret)
+              if (OB_SUCCESS == ret)
               {
-                TBSYS_LOG(ERROR, "ObLogReader read error[ret=%d]", ret);
+                ret = log_reader.read_log(cmd, seq, log_data, log_length);
+                if (OB_FILE_NOT_EXIST != ret && OB_READ_NOTHING != ret && OB_SUCCESS != ret)
+                {
+                  TBSYS_LOG(ERROR, "ObLogReader read error[ret=%d]", ret);
+                }
               }
             } // end while
 
@@ -315,14 +321,29 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        ret = start_log(max_log_id_, get_cur_log_seq());
-        if (OB_SUCCESS != ret)
+        ObLogCursor start_cursor;
+        if (OB_SUCCESS != (ret = log_reader.get_next_cursor(start_cursor))
+            && OB_READ_NOTHING != ret)
         {
-          TBSYS_LOG(ERROR, "ObLogWriter start_log[max_log_id_=%lu get_cur_log_seq()=%lu", max_log_id_, get_cur_log_seq());
+          TBSYS_LOG(ERROR, "get_cursor(%s)=>%d", to_cstring(start_cursor), ret);
+        }
+        else if (OB_SUCCESS == ret)
+        {}
+        else
+        {
+          set_cursor(start_cursor, replay_point_, 1, 0);
+          ret = OB_SUCCESS;
+        }
+
+        if (OB_SUCCESS != ret)
+        {}
+        else if (OB_SUCCESS != (ret = start_log(start_cursor)))
+        {
+          TBSYS_LOG(ERROR, "ObLogWriter start_log[%s]", to_cstring(start_cursor));
         }
         else
         {
-          TBSYS_LOG(INFO, "start log [%d] done, cur_log_seq=%lu", max_log_id_, get_cur_log_seq());
+          TBSYS_LOG(INFO, "start log [%s] done", to_cstring(start_cursor));
         }
       }
       return ret;
@@ -343,11 +364,11 @@ namespace oceanbase
           ret = root_server_->recover_from_check_point(rt_server_status_, ckpt_id_);
           if (ret != OB_SUCCESS)
           {
-            TBSYS_LOG(ERROR, "recover from check point [%d] failed, err=%d", ckpt_id_, ret);
+            TBSYS_LOG(ERROR, "recover from check point [%lu] failed, err=%d", ckpt_id_, ret);
           }
           else
           {
-            TBSYS_LOG(INFO, "recover from check point [%d] done", ckpt_id_);
+            TBSYS_LOG(INFO, "recover from check point [%lu] done", ckpt_id_);
           }
         }
         else
@@ -383,7 +404,7 @@ namespace oceanbase
         }
         else
         {
-          err = ckpt_file.open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
+          err = ckpt_file.open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
           if (err < 0)
           {
             TBSYS_LOG(ERROR, "open check point file[%s] failed: %s", filename, strerror(errno));
@@ -393,7 +414,8 @@ namespace oceanbase
           {
             char st_str[UINT64_MAX_LEN];
             int st_str_len = 0;
-            int server_status = root_server_->get_server_status();
+            static const int STATUS_SLEEP        = 6;
+            int server_status = STATUS_SLEEP; // for compatible purpose
             st_str_len = snprintf(st_str, UINT64_MAX_LEN, "%d", server_status);
             if (st_str_len < 0)
             {
@@ -407,7 +429,7 @@ namespace oceanbase
             }
             else
             {
-              err = ckpt_file.write(st_str, st_str_len);
+              err = static_cast<int32_t>(ckpt_file.write(st_str, st_str_len));
               if (err < 0)
               {
                 TBSYS_LOG(ERROR, "write error[%s]", strerror(errno));
@@ -467,7 +489,7 @@ namespace oceanbase
         }
         else
         {
-          st_str_len = ckpt_file.read(st_str, UINT64_MAX_LEN);
+          st_str_len = static_cast<int32_t>(ckpt_file.read(st_str, UINT64_MAX_LEN));
           TBSYS_LOG(DEBUG, "st_str_len = %d", st_str_len);
           st_str[st_str_len] = '\0';
           if (st_str_len < 0)
@@ -501,4 +523,3 @@ namespace oceanbase
     }
   } /* rootserver */
 } /* oceanbase */
-

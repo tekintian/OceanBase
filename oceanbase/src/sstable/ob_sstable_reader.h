@@ -1,17 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ *  (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
+ *  This program is free software; you can redistribute it
+ *  and/or modify it under the terms of the GNU General Public
+ *  License version 2 as published by the Free Software
+ *  Foundation.
  *
- * ob_sstable_reader.h
- *
- * Authors:
- *     huating <huating.zmq@taobao.com>
- *
+ *  Authors:
+ *     qushan <qushan@taobao.com>
+ *     ObSSTableReader hold a sstable file object.
  */
 #ifndef OCEANBASE_SSTABLE_OB_SSTABLE_READER_H_
 #define OCEANBASE_SSTABLE_OB_SSTABLE_READER_H_
@@ -20,6 +17,7 @@
 #include "common/compress/ob_compressor.h"
 #include "common/page_arena.h"
 #include "common/ob_fileinfo_manager.h"
+#include "ob_sstable_reader_i.h"
 #include "ob_sstable_schema.h"
 #include "ob_sstable_schema_cache.h"
 #include "ob_sstable_trailer.h"
@@ -34,7 +32,7 @@ namespace oceanbase
   }
   namespace sstable
   {
-    class ObSSTableReader
+    class ObSSTableReader : public SSTableReader
     {
       class ObFileInfo : public common::IFileInfo
       {
@@ -69,23 +67,31 @@ namespace oceanbase
       static const int64_t READ_TAIL_SIZE = 2 * common::OB_DIRECT_IO_ALIGN; //1024; 
 
     public:
-      ObSSTableReader(common::ModuleArena &arena, common::IFileInfoMgr& fileinfo_cache);
+      ObSSTableReader(common::ModuleArena &arena, common::IFileInfoMgr& fileinfo_cache,
+        tbsys::CThreadMutex* external_arena_mutex = NULL);
       virtual ~ObSSTableReader();
 
-      int open(const ObSSTableId& sstable_id);
+      int open(const int64_t sstable_id, const int64_t version = 0);
+      int open(const ObSSTableId& sstable_id, const int64_t version = 0);
       void reset();
       inline bool is_opened() const { return is_opened_; }
       inline const ObSSTableId& get_sstable_id() const { return sstable_id_; }
+      inline const common::ObNewRange& get_range() const { return trailer_.get_range(); }
 
       int64_t get_row_count() const;
       int64_t get_sstable_size() const;
+      int64_t get_sstable_checksum() const;
 
       const ObSSTableSchema* get_schema() const;
+      const common::BloomFilter* get_bloom_filter() const; 
+      int serialize_bloom_filter(const int64_t bf_version, char* &buffer, int64_t &size);
+      void destroy_bloom_filter();
       inline const ObSSTableTrailer& get_trailer() const { return trailer_; }
       ObCompressor* get_decompressor();
-      bool may_contain(const common::ObString& key) const;
+      bool may_contain(const common::ObRowkey& key) const;
+      inline bool empty() const { return (trailer_.get_row_count() == 0); }
 
-      static bool check_sstable(const char* sstable_fname);
+      static bool check_sstable(const char* sstable_fname, uint64_t *sstable_checksum);
 
     private:
       static int read_record(const common::IFileInfo& file_info,
@@ -109,8 +115,14 @@ namespace oceanbase
                               const int64_t trailer_size);
       int load_bloom_filter(const common::IFileInfo& file_info);
       int load_schema(const common::IFileInfo& file_info);
+      int load_range(const common::IFileInfo& file_info);
 
-      inline ObSSTableSchemaCache& get_sstable_schema_cache()
+      // load range for sstableV2 format, which is the sstable format of oceanbase 0.3.x
+      int load_range_compatible(const char* payload_ptr, const int64_t payload_size,
+          common::ObNewRange& range, common::ObObj* start_key_obj_array, 
+          common::ObObj* end_key_obj_array);
+
+      static inline ObSSTableSchemaCache& get_sstable_schema_cache()
       {
         static ObSSTableSchemaCache s_schema_cache;
 
@@ -124,13 +136,15 @@ namespace oceanbase
       int64_t sstable_size_;
       ObSSTableSchema* schema_;
       ObCompressor* compressor_;
+      common::ObBloomFilterV1* bloom_filter_;
       ObSSTableId sstable_id_;
       ObSSTableTrailer trailer_;
-      common::BloomFilter bloom_filter_;
 
       common::ModulePageAllocator mod_;
       common::ModuleArena own_arena_;
       common::ModuleArena &external_arena_;
+      tbsys::CThreadMutex* external_arena_mutex_;
+      mutable tbsys::CThreadMutex bf_mutex_;
 
       common::IFileInfoMgr& fileinfo_cache_;
     };

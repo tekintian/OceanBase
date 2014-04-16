@@ -1,25 +1,23 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_block_index_cache.cpp
+ * ob_block_index_cache.cpp for block index cache. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #include <tbsys.h>
 #include <tblog.h>
 #include "common/ob_malloc.h"
 #include "common/ob_file.h"
+#include "common/ob_common_stat.h"
 #include "ob_block_index_cache.h"
 #include "ob_disk_path.h"
-#include "ob_sstable_stat.h"
 
 namespace oceanbase
 {
@@ -45,7 +43,7 @@ namespace oceanbase
 
     }
     
-    int ObBlockIndexCache::init(const ObBlockIndexCacheConf& conf)
+    int ObBlockIndexCache::init(const int64_t cache_mem_size)
     {
       int ret = OB_SUCCESS;
 
@@ -54,7 +52,7 @@ namespace oceanbase
         TBSYS_LOG(INFO, "have inited");
         ret = OB_ERROR;
       }
-      else if (OB_SUCCESS != kv_cache_.init(conf.cache_mem_size))
+      else if (OB_SUCCESS != kv_cache_.init(cache_mem_size))
       {
         TBSYS_LOG(WARN, "init kv cache fail");
         ret = OB_ERROR;
@@ -62,8 +60,28 @@ namespace oceanbase
       else
       {
         inited_ = true;
-        TBSYS_LOG_US(DEBUG, "init block index cache succ, cache_mem_size=%ld,",
-                     conf.cache_mem_size);
+        TBSYS_LOG_US(DEBUG, "init block index cache succ, cache_mem_size=%ld,", cache_mem_size);
+      }
+
+      return ret;
+    }
+
+    int ObBlockIndexCache::enlarg_cache_size(const int64_t cache_mem_size)
+    {
+      int ret = OB_SUCCESS;
+
+      if (!inited_)
+      {
+        TBSYS_LOG(INFO, "not inited");
+        ret = OB_NOT_INIT;
+      }
+      else if (OB_SUCCESS != (ret = kv_cache_.enlarge_total_size(cache_mem_size)))
+      {
+        TBSYS_LOG(WARN, "enlarge total block index cache size of kv cache fail");
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "success enlarge block index cache size to %ld", cache_mem_size);
       }
 
       return ret;
@@ -76,7 +94,7 @@ namespace oceanbase
                                        const char*& out_buffer)
     {
       int ret                 = OB_SUCCESS;
-      ObFileBuffer* file_buf  = GET_TSI(ObFileBuffer);
+      ObFileBuffer* file_buf  = GET_TSI_MULT(ObFileBuffer, TSI_SSTABLE_FILE_BUFFER_1);
       out_buffer = NULL;
 
       if (NULL == file_buf)
@@ -109,6 +127,7 @@ namespace oceanbase
       int64_t read_offset             = 0;
       ObSSTableBlockIndexV2* bci_tmp  = NULL;
       const char* record_buf          = NULL;
+      int64_t start_time              = tbsys::CTimeUtil::getTime();
     
       if (!inited_ || NULL == fileinfo_cache_)
       {
@@ -156,8 +175,10 @@ namespace oceanbase
         }
         else
         {
-          INC_STAT(table_id, INDEX_DISK_IO_NUM, 1);
-          INC_STAT(table_id, INDEX_DISK_IO_BYTES, read_size);
+#ifndef _SSTABLE_NO_STAT_
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_NUM, 1);
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_BYTES, read_size);
+#endif
         }
       }
 
@@ -188,6 +209,13 @@ namespace oceanbase
                       table_id);
           }
         }
+        TBSYS_LOG(INFO, "load sstable block index, table_id=%lu, sstable_id=%lu, "
+                        "block_index_sstable_size=%ld, block_index_memory_size=%ld, "
+                        "load_time_us=%ld, block_index_cache_total_memsize=%ld, "
+                        "block_index_cache_item_count=%ld",
+                  table_id, block_index_info.sstable_file_id_, block_index_info.size_, 
+                  bci_tmp->get_deserialize_size(), tbsys::CTimeUtil::getTime() - start_time,
+                  kv_cache_.size(), kv_cache_.count());
       }
 
       return ret;
@@ -212,13 +240,31 @@ namespace oceanbase
         ret = kv_cache_.get(block_index_info, block_index, handle, false);
         if (OB_SUCCESS == ret)
         {
-          INC_STAT(table_id, INDEX_BLOCK_INDEX_CACHE_HIT, 1);
+#ifndef _SSTABLE_NO_STAT_
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_INDEX_CACHE_HIT, 1);
+#endif
         }
         else
         {
           //read data from disk
           ret = read_sstable_block_index(block_index_info, block_index, table_id, handle);
-          INC_STAT(table_id, INDEX_BLOCK_INDEX_CACHE_MISS, 1);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "failed to read sstable block index, table_id=%lu, "
+                "sstable_id=%lu, offset=%ld, size=%ld",
+                table_id, block_index_info.sstable_file_id_, block_index_info.offset_,
+                block_index_info.size_);
+            if (OB_SUCCESS != kv_cache_.erase(block_index_info))
+            {
+              TBSYS_LOG(WARN, "failed to delete fake node from kvcache, table_id=%lu, "
+                  "sstable_id=%lu, offset=%ld, size=%ld",
+                  table_id, block_index_info.sstable_file_id_, block_index_info.offset_,
+                  block_index_info.size_);
+            }
+          }
+#ifndef _SSTABLE_NO_STAT_
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_INDEX_CACHE_MISS, 1);
+#endif
         }
       }
       
@@ -256,7 +302,7 @@ namespace oceanbase
         const ObBlockIndexPositionInfo& block_index_info,
         const uint64_t table_id,
         const uint64_t column_group_id,
-        const ObString& key,
+        const ObRowkey& key,
         const SearchMode search_mode,
         ObBlockPositionInfos& pos_info)
     {
@@ -274,7 +320,7 @@ namespace oceanbase
       else if ( is_regular_mode(search_mode)
           && (NULL == key.ptr() || key.length() <= 0) )
       {
-        TBSYS_LOG(WARN, "invalid param, key_ptr=%p, key_len=%d",
+        TBSYS_LOG(WARN, "invalid param, key_ptr=%p, key_len=%ld",
                   key.ptr(), key.length());
         ret = OB_INVALID_ARGUMENT;
       }
@@ -305,7 +351,7 @@ namespace oceanbase
         const ObBlockIndexPositionInfo& block_index_info,
         const uint64_t table_id,
         const uint64_t column_group_id,
-        const common::ObRange& range,
+        const common::ObNewRange& range,
         const bool is_reverse_scan,
         ObBlockPositionInfos& pos_info)
     {
@@ -347,7 +393,7 @@ namespace oceanbase
         const ObBlockIndexPositionInfo& block_index_info,
         const uint64_t table_id,
         const uint64_t column_group_id,
-        const ObString& key,
+        const ObRowkey& key,
         const SearchMode search_mode,
         ObBlockPositionInfo& pos_info)
     {
@@ -440,6 +486,41 @@ namespace oceanbase
       {
         inited_ = false;
         fileinfo_cache_ = NULL;
+      }
+
+      return ret;
+    }
+
+    int ObBlockIndexCache::get_end_key(
+      const ObBlockIndexPositionInfo& block_index_info,
+      const uint64_t table_id, ObRowkey& row_key)
+    {
+      int ret = OB_SUCCESS;
+      bool revert_handle = false;
+      ObSSTableBlockIndexV2 block_index;
+      Handle handle;
+
+      if ( OB_SUCCESS != (ret = 
+            check_param(block_index_info, table_id, 0)) )
+      {
+        TBSYS_LOG(ERROR, "check_param error, table_id=%ld", table_id);
+      }
+      else if ( OB_SUCCESS != (ret =
+          load_block_index(block_index_info, block_index, table_id, handle)) )
+      {
+        TBSYS_LOG(ERROR, "load block index error, ret=%d, table_id=%ld", 
+            ret, table_id);
+      }
+      else
+      {
+        revert_handle = true;
+        row_key = block_index.get_end_key(table_id);
+      }
+
+      if (revert_handle && OB_SUCCESS != kv_cache_.revert(handle))
+      {
+        //must revert the handle
+        TBSYS_LOG(WARN, "failed to revert  block index cache handle");
       }
 
       return ret;

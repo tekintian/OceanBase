@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./ob_serialization.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_serialization.cpp / hash / common / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2010-07-23 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #ifndef  OCEANBASE_COMMON_HASH_SERIALIZATION_H_
 #define  OCEANBASE_COMMON_HASH_SERIALIZATION_H_
 #include <stdio.h>
@@ -239,5 +243,4 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_HASH_SERIALIZATION_H_
-
 

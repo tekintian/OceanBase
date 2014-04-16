@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
  *
- * ob_sstable_schema_cache.cpp
+ * ob_sstable_schema_cache.cpp for sstable schema cache.
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #include <tblog.h>
@@ -22,9 +20,10 @@ namespace oceanbase
   {
     using namespace common;
 
-    ObSSTableSchemaCache::ObSSTableSchemaCache() : schema_cnt_(0)
+    ObSSTableSchemaCache::ObSSTableSchemaCache()
+    : schema_array_(NULL), schema_buf_size_(DEFAULT_SCHEMA_BUF_SIZE), schema_cnt_(0)
     {
-      memset(schema_array_, 0, sizeof(ObSchemaNode) * MAX_SCHEMA_VER_COUNT);
+
     }
 
     ObSSTableSchemaCache::~ObSSTableSchemaCache()
@@ -32,15 +31,15 @@ namespace oceanbase
       destroy();
     }
 
-    ObSSTableSchema* ObSSTableSchemaCache::get_schema(const uint64_t table_id, 
+    ObSSTableSchema* ObSSTableSchemaCache::get_schema(const uint64_t table_id,
                                                       const int64_t version)
     {
       ObSSTableSchema* schema = NULL;
       int64_t index           = 0;
-      
+
       if (OB_INVALID_ID == table_id || 0 == table_id || version < 0)
       {
-        TBSYS_LOG(WARN, "invalid param, table_id=%lu, version=%ld, schema_cnt=%ld", 
+        TBSYS_LOG(WARN, "invalid param, table_id=%lu, version=%ld, schema_cnt=%ld",
                   table_id, version, schema_cnt_);
       }
       else
@@ -57,8 +56,8 @@ namespace oceanbase
           else
           {
             TBSYS_LOG(WARN, "sstable schema is NULL in sstable schema cache, index=%ld, "
-                            "table_id=%lu, version=%ld, ref_cnt=%ld, schema_cnt=%ld", 
-                      index, schema_array_[index].table_id_, schema_array_[index].schema_ver_, 
+                            "table_id=%lu, version=%ld, ref_cnt=%ld, schema_cnt=%ld",
+                      index, schema_array_[index].table_id_, schema_array_[index].schema_ver_,
                       schema_array_[index].ref_cnt_, schema_cnt_);
           }
         }
@@ -68,36 +67,78 @@ namespace oceanbase
       return schema;
     }
 
+    int ObSSTableSchemaCache::ensure_schema_buf_space(const int64_t size)
+    {
+      int ret               = OB_SUCCESS;
+      char *new_buf         = NULL;
+      int64_t reamin_size   = schema_buf_size_ - SCHEMA_NODE_SIZE * schema_cnt_;
+      int64_t schema_buf_len  = 0;
+
+      if (size <= 0)
+      {
+        TBSYS_LOG(WARN, "invalid sstable schema size, size=%ld", size);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (NULL == schema_array_ || (NULL != schema_array_ && size > reamin_size))
+      {
+        schema_buf_len = size > reamin_size
+                       ? (schema_buf_size_ * 2) : schema_buf_size_;
+        if (schema_buf_len - SCHEMA_NODE_SIZE * schema_cnt_ < size)
+        {
+          schema_buf_len = SCHEMA_NODE_SIZE * schema_cnt_ + size * 2;
+        }
+        new_buf = static_cast<char*>(ob_malloc(schema_buf_len, ObModIds::OB_SSTABLE_SCHEMA));
+        if (NULL == new_buf)
+        {
+          TBSYS_LOG(ERROR, "Problem allocating memory for sstable schema buffer");
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+        }
+        else
+        {
+          memset(new_buf, 0, schema_buf_len);
+          if (NULL != schema_array_)
+          {
+            TBSYS_LOG(INFO, "expand sstable schema cache, schema_cnt=%ld, "
+                            "old_schema_buf_size=%ld, new_schema_buf_size=%ld",
+                      schema_cnt_, schema_buf_size_, schema_buf_len);
+            memcpy(new_buf, schema_array_, SCHEMA_NODE_SIZE * schema_cnt_);
+            ob_free(schema_array_);
+            schema_array_ = NULL;
+          }
+          schema_buf_size_ = schema_buf_len;
+          schema_array_ = reinterpret_cast<ObSchemaNode*>(new_buf);
+        }
+      }
+
+      return ret;
+    }
+
     int ObSSTableSchemaCache::add_schema(ObSSTableSchema* schema, const uint64_t table_id,
                                          const int64_t version)
     {
       int ret       = OB_SUCCESS;
       int64_t index = 0;
       int64_t i     = 0;
-      
+
       if (NULL == schema || OB_INVALID_ID == table_id || 0 == table_id || version < 0)
       {
-        TBSYS_LOG(WARN, "invalid param, schema=%p, table_id=%lu, version=%ld, schema_cnt=%ld", 
+        TBSYS_LOG(WARN, "invalid param, schema=%p, table_id=%lu, version=%ld, schema_cnt=%ld",
                   schema, table_id, version, schema_cnt_);
         ret = OB_ERROR;
       }
-      else if (schema_cnt_ >= MAX_SCHEMA_VER_COUNT)
-      {
-        TBSYS_LOG(WARN, "can't add more schema into sstable schema cache, schema_cnt=%ld, "
-                        "max_schema_cnt=%ld",
-                  schema_cnt_, MAX_SCHEMA_VER_COUNT );
-        ret = OB_ERROR;
-      }
-
-      if (OB_SUCCESS == ret)
+      else
       {
         rwlock_.wrlock();
-        index = find_schema_node_index(table_id, version);
-        if (index >= 0)
+        ret = ensure_schema_buf_space(SCHEMA_NODE_SIZE);
+        if (OB_SUCCESS == ret)
         {
-          TBSYS_LOG(INFO, "sstable schema existent, table_id=%lu, version=%ld, schema_cnt=%ld", 
-                    table_id, version, schema_cnt_);
-          ret = OB_ENTRY_EXIST;
+          index = find_schema_node_index(table_id, version);
+          if (index >= 0)
+          {
+            TBSYS_LOG(INFO, "sstable schema existent, table_id=%lu, version=%ld, schema_cnt=%ld",
+                      table_id, version, schema_cnt_);
+            ret = OB_ENTRY_EXIST;
+          }
         }
 
         if (OB_SUCCESS == ret)
@@ -105,10 +146,10 @@ namespace oceanbase
           i = upper_bound_index(table_id, version);
           if (i < schema_cnt_)
           {
-            memmove(&schema_array_[i + 1], &schema_array_[i], 
+            memmove(&schema_array_[i + 1], &schema_array_[i],
                     sizeof(ObSchemaNode) * (schema_cnt_ - i));
           }
-  
+
           schema_array_[i].reset();
           schema_array_[i].table_id_ = table_id;
           schema_array_[i].schema_ = schema;
@@ -121,17 +162,17 @@ namespace oceanbase
 
       return ret;
     }
-    
+
     int ObSSTableSchemaCache::revert_schema(const uint64_t table_id, const int64_t version)
     {
       int ret                     = OB_SUCCESS;
       int64_t index               = 0;
       int64_t ref_cnt             = 0;
       ObSSTableSchema* free_schema = NULL;
-      
+
       if (OB_INVALID_ID == table_id || 0 == table_id || version < 0)
       {
-        TBSYS_LOG(WARN, "invalid param, table_id=%lu, version=%ld, schema_cnt=%ld", 
+        TBSYS_LOG(WARN, "invalid param, table_id=%lu, version=%ld, schema_cnt=%ld",
                   table_id, version, schema_cnt_);
         ret = OB_ERROR;
       }
@@ -142,7 +183,7 @@ namespace oceanbase
         if (index < 0)
         {
           TBSYS_LOG(WARN, "sstable schema is non-existent, table_id=%lu, "
-                          "version=%ld, schema_cnt=%ld", 
+                          "version=%ld, schema_cnt=%ld",
                     table_id, version, schema_cnt_);
           ret = OB_ERROR;
         }
@@ -154,7 +195,7 @@ namespace oceanbase
             free_schema = schema_array_[index].schema_;
             if (index < schema_cnt_ - 1)
             {
-              memmove(&schema_array_[index], &schema_array_[index + 1], 
+              memmove(&schema_array_[index], &schema_array_[index + 1],
                       sizeof(ObSchemaNode) * (schema_cnt_ - index));
             }
             --schema_cnt_;
@@ -180,7 +221,7 @@ namespace oceanbase
       return ret;
     }
 
-    int64_t ObSSTableSchemaCache::find_schema_node_index(const uint64_t table_id,  
+    int64_t ObSSTableSchemaCache::find_schema_node_index(const uint64_t table_id,
                                                          const int64_t version) const
     {
       int64_t ret     = -1;
@@ -209,7 +250,7 @@ namespace oceanbase
       return ret;
     }
 
-    int64_t ObSSTableSchemaCache::upper_bound_index(const uint64_t table_id, 
+    int64_t ObSSTableSchemaCache::upper_bound_index(const uint64_t table_id,
                                                     const int64_t version) const
     {
       int64_t left    = 0;
@@ -265,7 +306,17 @@ namespace oceanbase
 
     int ObSSTableSchemaCache::destroy()
     {
-      return clear();
+      int ret = OB_SUCCESS;
+
+      ret = clear();
+
+      if (NULL != schema_array_)
+      {
+        ob_free(schema_array_);
+        schema_array_ = NULL;
+      }
+
+      return ret;
     }
   } // end namespace sstable
 } // end namespace oceanbase

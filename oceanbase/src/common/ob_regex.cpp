@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_regex.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_regex.cpp common / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2011-03-19 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #include <stdlib.h>
 #include "tblog.h"
 #include "ob_malloc.h"
@@ -58,7 +62,7 @@ namespace oceanbase
         else
         {
           nmatch_ = reg_.re_nsub + 1;
-          match_ = (regmatch_t*)ob_malloc(sizeof(regmatch_t) * nmatch_);
+          match_ = (regmatch_t*)ob_malloc(sizeof(regmatch_t) * nmatch_, ObModIds::OB_REGEX);
           if (NULL == match_)
           {
             TBSYS_LOG(WARN, "create the regmatch object fail");
@@ -120,5 +124,4 @@ namespace oceanbase
     }
   }
 }
-
 

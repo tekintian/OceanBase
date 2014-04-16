@@ -1,22 +1,5 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_packet_factory.h for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
 #ifndef OCEANBASE_COMMON_PACKET_FACTORY_H_
 #define OCEANBASE_COMMON_PACKET_FACTORY_H_
-
-#include <tbnet.h>
 
 #include "ob_define.h"
 #include "ob_packet.h"
@@ -26,7 +9,7 @@ namespace oceanbase
 {
   namespace common
   {
-    class ObPacketFactory : public tbnet::IPacketFactory
+    class ObPacketFactory
     {
       public:
         ObPacketFactory()
@@ -43,7 +26,8 @@ namespace oceanbase
           }
         }
 
-        tbnet::Packet* createPacket(int pcode)
+        //这里的pcode没有用， 有这个参数是为了兼容
+        ObPacket* createPacket(int pcode = 0)
         {
           UNUSED(pcode);
           ObPacket* packet = NULL;
@@ -58,14 +42,15 @@ namespace oceanbase
             packet = new(buf) ObPacket();
             buf += sizeof(ObPacket);
             packet->set_packet_buffer(buf, OB_MAX_PACKET_LENGTH);
+            packet->set_no_free();
           }
           return packet;
         }
-
-        void destroyPacket(tbnet::Packet* packet)
+        
+        void destroyPacket(ObPacket* packet)
         {
           UNUSED(packet);
-          // does nothing
+          //do nothing
         }
 
       private:
@@ -78,4 +63,3 @@ namespace oceanbase
 } /* oceanbase */
 
 #endif /* end of include guard: OCEANBASE_COMMON_PACKET_FACTORY_H_ */
-

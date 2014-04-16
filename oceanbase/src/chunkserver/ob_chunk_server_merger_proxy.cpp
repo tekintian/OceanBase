@@ -1,56 +1,46 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 TaoBao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_chunk_server_merger_proxy.cpp
+ * ob_chunk_server_merger_proxy.cpp is for what ...
+ *
+ * Version: $id$
  *
  * Authors:
- *     maoqi <maoqi@taobao.com>
- * Changes: 
- *     qushan <qushan@taobao.com>
- *     yubai <yubai.lk@taobao.com>
- *     xielun <xielun.szd@taobao.com>
+ *   MaoQi maoqi@taobao.com
  *
  */
 
 #include "ob_chunk_server_merger_proxy.h"
 #include "common/ob_read_common_data.h"
-#include "common/ob_range.h"
 #include "common/ob_scanner.h"
 #include "common/ob_cell_array.h"
-#include "mergeserver/ob_ms_tablet_location_item.h"
 
 namespace oceanbase 
 {
   using namespace common;
-  using namespace mergeserver;
 
   namespace chunkserver 
   {
 
     ObChunkServerMergerProxy::ObChunkServerMergerProxy(ObTabletManager& manager)
-      : ObMergerRpcProxy(),cs_reader_(manager)
+      : ObMergerRpcProxy(), cs_reader_(manager)
     {}
         
     ObChunkServerMergerProxy::~ObChunkServerMergerProxy() {}
 
 
     int ObChunkServerMergerProxy::cs_scan(const common::ObScanParam & scan_param, 
-                                          mergeserver::ObMergerTabletLocation & addr, 
                                           common::ObScanner & scanner, 
                                           common::ObIterator * &it_out)
     {
       int ret = OB_SUCCESS;
       
       ObCellInfo cell_ext;
-      UNUSED(addr);
       it_out = NULL;
-      cell_array_.clear();
 
       if ((ret = cs_reader_.scan(scan_param)) != OB_SUCCESS)
       {
@@ -68,7 +58,7 @@ namespace oceanbase
         cell_ext.table_id_ = scan_param.get_table_id();
         cell_ext.row_key_ = scan_param.get_range()->end_key_;
 
-        scanner.clear();
+        scanner.reset();
         scanner.set_range(*scan_param.get_range());
         //data version
         scanner.set_data_version(scan_param.get_version_range().start_version_);

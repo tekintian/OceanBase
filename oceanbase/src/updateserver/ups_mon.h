@@ -1,25 +1,24 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  * Version: $Id$
- *
- * ups_mon.h for ...
  *
  * Authors:
  *   yanran <yanran.hfs@taobao.com>
- *
+ *     - some work details if you want
  */
+
 #ifndef OCEANBASE_UPDATESERVER_UPS_MON_H_
 #define OCEANBASE_UPDATESERVER_UPS_MON_H_
 
 #include "tbsys.h"
-#include "tbnet.h"
 #include "common/ob_define.h"
 #include "common/ob_server.h"
+#include "common/ob_base_client.h"
 #include "common/ob_client_manager.h"
 #include "common/ob_packet_factory.h"
 #include "common/ob_result.h"
@@ -63,30 +62,7 @@ namespace oceanbase
       static const char* DEFAULT_LOG_LEVEL;
     }; // end class UpsMon
 
-    class BaseClient
-    {
-    public:
-      BaseClient();
-      virtual ~BaseClient();
-    public:
-      virtual int initialize();
-      virtual int destroy();
-      virtual int wait();
-      
-      inline common::ObClientManager * get_client_mgr()
-      {
-        return &client_;
-      }
-
-    private:
-      tbnet::DefaultPacketStreamer streamer_;
-      tbnet::Transport transport_;
-      common::ObPacketFactory factory_;
-      common::ObClientManager client_;
-    }; // end class BaseClient
   } // end namespace updateserver
 } // end namespace oceanbase
 
 #endif // OCEANBASE_UPDATESERVER_UPS_MON_H_
-
-

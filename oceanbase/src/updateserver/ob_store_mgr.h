@@ -1,18 +1,23 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_store_mgr.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_store_mgr.h updateserver / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2011-03-16 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ // 多磁盘管理器
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #ifndef  OCEANBASE_UPDATESERVER_STORE_MGR_H_
 #define  OCEANBASE_UPDATESERVER_STORE_MGR_H_
 #include <sys/types.h>
@@ -25,7 +30,7 @@
 #include <pthread.h>
 #include <new>
 #include <algorithm>
-#include "ob_atomic.h"
+#include "common/ob_atomic.h"
 #include "common/ob_define.h"
 #include "common/ob_vector.h"
 #include "common/page_arena.h"
@@ -35,6 +40,7 @@
 #include "ob_ups_utils.h"
 
 #define TRASH_DIR "trash"
+#define BYPASS_DIR "bypass"
 
 namespace oceanbase
 {
@@ -145,6 +151,7 @@ namespace oceanbase
         static inline dev_t get_dev(const char *name);
         static inline int64_t get_free(const char *name);
         static inline int64_t get_total(const char *name);
+        static inline int64_t get_mtime(const int fd);
         static inline bool build_dir(const char *path, const char *dir);
       private:
         template <class Func>
@@ -315,6 +322,18 @@ namespace oceanbase
       return ret;
     }
 
+    inline int64_t StoreMgr::get_mtime(const int fd)
+    {
+      int64_t ret = 0;
+      struct stat st;
+      if (-1 != fd
+          && 0 == fstat(fd, &st))
+      {
+        ret = st.st_mtime * 1000000L;
+      }
+      return ret;
+    }
+
     bool StoreMgr::build_dir(const char *path, const char *dir)
     {
       bool bret = false;
@@ -339,6 +358,4 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_UPDATESERVER_STORE_MGR_H_
-
-
 

@@ -1,17 +1,18 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_sstable_schema_cache.h
+ * ob_sstable_schema_cache.h for sstable schema cache. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
- *
+ *   huating <huating.zmq@taobao.com>
+ *  
+ * because sstable with the same version has the same sstable 
+ * schema, so we can use this sstable schema cache to make 
+ * sstable with the same version share the same sstable schema. 
  */
 #ifndef OCEANBASE_SSTABLE_OB_SSTABLE_SCHEMA_CACHE_H_
 #define OCEANBASE_SSTABLE_OB_SSTABLE_SCHEMA_CACHE_H_
@@ -138,15 +139,19 @@ namespace oceanbase
       int destroy();
 
     private:
+      int ensure_schema_buf_space(const int64_t size);
       int64_t find_schema_node_index(const uint64_t table_id, const int64_t version) const;
       int64_t upper_bound_index(const uint64_t table_id, const int64_t version) const;
 
     private:
-      static const int64_t MAX_SCHEMA_VER_COUNT = 1024;
+      static const int64_t SCHEMA_NODE_SIZE = sizeof(ObSchemaNode);
+      static const int64_t DEFAULT_SCHEMA_BUF_SIZE = 
+        common::OB_MAX_TABLE_NUMBER * SCHEMA_NODE_SIZE;
 
       DISALLOW_COPY_AND_ASSIGN(ObSSTableSchemaCache);
 
-      ObSchemaNode schema_array_[MAX_SCHEMA_VER_COUNT];
+      ObSchemaNode* schema_array_;
+      int64_t schema_buf_size_;
       int64_t schema_cnt_;
       common::SpinRWLock rwlock_;
     };

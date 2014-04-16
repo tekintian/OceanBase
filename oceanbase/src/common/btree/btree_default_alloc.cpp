@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./btree_default_alloc.cpp for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -104,7 +89,7 @@ namespace oceanbase
         // malloc出一个新块, 每次1m
         malloc_count_ ++;
         // 分配出1m空间
-        int32_t n = BtreeDefaultAlloc::MALLOC_SIZE / size_;
+        uint64_t n = BtreeDefaultAlloc::MALLOC_SIZE / size_;
         n = (n < 1 ? 1 : n) * size_ + sizeof(struct MemBuffer);
         char *pdata = reinterpret_cast<char*>(malloc(n));
         OCEAN_BTREE_CHECK_TRUE(pdata, "pdata is null.");
@@ -206,5 +191,4 @@ namespace oceanbase
 
   } // end namespace common
 } // end namespace oceanbase
-
 

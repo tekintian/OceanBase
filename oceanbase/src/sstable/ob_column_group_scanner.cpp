@@ -1,18 +1,13 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
- *
- * ob_column_group_scanner.cpp
  *
  * Authors:
- *     qushan <qushan@taobao.com>
- * Changes: 
- *     huating <huating.zmq@taobao.com>
+ *   duanfei <duanfei@taobao.com>
+ *   qushan <qushan@taobao.com>
  *
  */
 #include "ob_column_group_scanner.h"
@@ -20,7 +15,6 @@
 #include "common/ob_define.h"
 #include "common/ob_record_header.h"
 #include "ob_sstable_reader.h"
-#include "ob_sstable_writer.h"
 #include "ob_blockcache.h"
 
 using namespace oceanbase::common;
@@ -30,7 +24,7 @@ namespace oceanbase
   namespace sstable
   {
     ObColumnGroupScanner::ObColumnGroupScanner() 
-      : block_index_cache_(NULL), block_cache_(NULL), 
+      : block_index_cache_(NULL), block_cache_(NULL), rowkey_info_(NULL),
       iterate_status_(ITERATE_NOT_INITIALIZED), index_array_cursor_(INVALID_CURSOR), 
       group_id_(0), group_seq_(0), scan_param_(NULL), sstable_reader_(NULL), 
       uncompressed_data_buffer_(NULL), uncompressed_data_bufsiz_(0), 
@@ -43,28 +37,26 @@ namespace oceanbase
     {
     }
 
-    int ObColumnGroupScanner::check_status() const
+    inline int ObColumnGroupScanner::check_status() const
     {
       int iret = OB_SUCCESS;
-      if (is_forward_status())
+
+      switch (iterate_status_)
       {
-        iret = OB_SUCCESS;
-      }
-      else if (ITERATE_NOT_INITIALIZED == iterate_status_)
-      {
-        iret = OB_NOT_INIT;
-      }
-      else if (ITERATE_NOT_START == iterate_status_)
-      {
-        iret = OB_NOT_INIT;
-      }
-      else if (ITERATE_END == iterate_status_)
-      {
-        iret = OB_ITER_END;
-      }
-      else
-      {
-        iret = OB_ERROR;
+        case ITERATE_IN_PROGRESS:
+        case ITERATE_LAST_BLOCK:
+        case ITERATE_NEED_FORWARD:
+          iret = OB_SUCCESS;
+          break;
+        case ITERATE_NOT_INITIALIZED:
+        case ITERATE_NOT_START:
+          iret = OB_NOT_INIT;
+          break;
+        case ITERATE_END:
+          iret = OB_ITER_END;
+          break;
+        default:
+          iret = OB_ERROR;
       }
 
       return iret;
@@ -79,13 +71,12 @@ namespace oceanbase
         iret = scanner_.next_cell();
         do
         {
-
           // if reach end of current block, skip to next
           // fetch_next_block return OB_SUCCESS means still has block(s) 
           // or OB_ITER_END means reach the end of this scan(%scan_param.end_key).
           if (OB_BEYOND_THE_RANGE == iret 
               && (OB_SUCCESS == (iret = fetch_next_block())) 
-              && is_forward_status() )
+              && is_forward_status())
           {
             // got block(s) ahead, continue iterate block data.
             // current block may contains valid keys(dense format), 
@@ -99,69 +90,7 @@ namespace oceanbase
 
       iret = check_status();
 
-      if (OB_UNLIKELY(OB_SUCCESS != iret && OB_ITER_END != iret))
-      {
-        TBSYS_LOG(ERROR, "next cell error iret=%d, group=%ld, table=%ld,"
-            "sstable=%ld,cursor=%ld,current block count=%ld,iter status=%ld",
-            iret, group_id_, scan_param_->get_table_id(),
-            sstable_reader_->get_sstable_id().sstable_file_id_,
-            index_array_cursor_, index_array_.block_count_, iterate_status_);
-      }
-
-
       return iret;
-    }
-
-    int ObColumnGroupScanner::get_cell(ObCellInfo** cell)
-    {
-      return get_cell(cell, NULL);
-    }
-
-    int ObColumnGroupScanner::get_cell(ObCellInfo** cell, bool* is_row_changed)
-    {
-      int ret = OB_SUCCESS;
-
-      if (NULL != cell) 
-      {
-        *cell = NULL;
-      }
-
-      if (OB_UNLIKELY(NULL == cell))
-      {
-        TBSYS_LOG(ERROR, "invalid arguments, cell=%p.", cell);
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (OB_UNLIKELY(ITERATE_NOT_START == iterate_status_) ) 
-      {
-        TBSYS_LOG(ERROR, "iterate not start.");
-        ret = OB_NOT_INIT;
-      }
-      else if (OB_UNLIKELY(ITERATE_IN_ERROR == iterate_status_))
-      {
-        TBSYS_LOG(ERROR, "iterate in error.");
-        ret = OB_ERROR;
-      }
-      else
-      {
-        ret = scanner_.get_cell(cell, is_row_changed);
-        // set table_id ignored by ObSSTableBlockScanner.
-        if (OB_SUCCESS == ret)
-        {
-          (*cell)->table_id_ = scan_param_->get_table_id();
-        }
-        else
-        {
-          TBSYS_LOG(ERROR, "block scanner get cell failed, ret=%d", ret);
-        }
-      }
-
-      if (OB_UNLIKELY(OB_SUCCESS != ret && NULL != sstable_reader_))
-      {
-        TBSYS_LOG(ERROR, "get_cell error, ret=%d, group_id=%ld,sstable_id=%ld, iterate status=%d",
-            ret, group_id_, sstable_reader_->get_sstable_id().sstable_file_id_, iterate_status_);
-      }
-
-      return ret;
     }
 
     int ObColumnGroupScanner::alloc_buffer(char* &buffer, const int64_t bufsiz)
@@ -169,7 +98,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       buffer = NULL;
 
-      common::ModuleArena * arena = GET_TSI(common::ModuleArena);
+      common::ModuleArena * arena = GET_TSI_MULT(common::ModuleArena, TSI_SSTABLE_MODULE_ARENA_1);
 
       if (NULL == arena || NULL == (buffer = arena->alloc(bufsiz)) )
       {
@@ -200,6 +129,7 @@ namespace oceanbase
     int ObColumnGroupScanner::trans_input_column_id(
         const uint64_t group_id,
         const uint64_t group_seq,
+        const int64_t group_size, 
         const ObSSTableScanParam *scan_param, 
         const ObSSTableReader *sstable_reader)
     {
@@ -211,6 +141,7 @@ namespace oceanbase
 
       uint64_t table_id = scan_param->get_table_id();
       uint64_t sstable_file_id = sstable_reader->get_sstable_id().sstable_file_id_;
+      uint64_t column_group_id = OB_INVALID_ID;
 
       current_scan_column_indexes_.reset(); //reset scan column index first
 
@@ -220,31 +151,75 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "internal error, schema=%p is null "
             "or input scan param column size=%ld.", schema, column_id_size);
       }
-      else if (column_id_size == 1 && *column_id_begin == 0)
+      else if (column_id_size == 1 && *column_id_begin == OB_FULL_ROW_COLUMN_ID)
       {
         // whole row, query whole column group;
         int64_t column_size = 0;
-        const ObSSTableSchemaColumnDef* def_array = schema->get_group_schema(
-            table_id, group_id, column_size);
-        if (NULL == def_array)
+        const ObSSTableSchemaColumnDef* def_array = NULL; 
+
+        if (group_seq == 0)
         {
-          iret = OB_ERROR;
-          TBSYS_LOG(ERROR, "find column group def array error.");
-        }
-        else
-        {
-          const ObSSTableSchemaColumnDef* def = NULL;
-          // add every column id in this column group.
-          for (int64_t i = 0; i < column_size && OB_SUCCESS == iret; ++i)
+          // add rowkey columns in first column group;
+          if (schema->is_binary_rowkey_format(table_id))
           {
-            def = def_array + i;
-            if (NULL == def)
+            if (NULL == rowkey_info_)
             {
-              TBSYS_LOG(ERROR, "schema def is null i=%ld, column_size=%ld", i, column_size);
+              TBSYS_LOG(ERROR, "binary rowkey sstable NOT set rowkey info, table=%ld", table_id);
+              iret = OB_ERROR;
             }
             else
             {
-              iret = current_scan_column_indexes_.add_column_id(i, def->column_name_id_);
+              for (int64_t i = 0; i < rowkey_info_->get_size() && OB_SUCCESS == iret; ++i)
+              {
+                iret = current_scan_column_indexes_.add_column_id(
+                    ObScanColumnIndexes::Rowkey, static_cast<int32_t>(i), rowkey_info_->get_column(i)->column_id_);
+              }
+            }
+          }
+          else if ( NULL == ( def_array = schema->get_group_schema(table_id, 
+                  ObSSTableSchemaColumnDef::ROWKEY_COLUMN_GROUP_ID, column_size)))
+          {
+            TBSYS_LOG(INFO, "rowkey column group not exist:table:%ld", table_id);
+          }
+          else
+          {
+            for (int64_t i = 0; i < column_size && OB_SUCCESS == iret; ++i)
+            {
+              iret = current_scan_column_indexes_.add_column_id(
+                  ObScanColumnIndexes::Rowkey, def_array[i].rowkey_seq_ - 1, def_array[i].column_name_id_);
+            }
+          }
+        }
+
+        def_array = schema->get_group_schema(table_id, group_id, column_size);
+        if (NULL == def_array)
+        {
+          iret = OB_ERROR;
+          TBSYS_LOG(ERROR, "find column group def array error table=%ld, group=%ld", table_id, group_id);
+        }
+        else
+        {
+          // add every column id in this column group.
+          for (int64_t i = 0; i < column_size && OB_SUCCESS == iret; ++i)
+          {
+            /**
+             * if one column belongs to several column group, only the first 
+             * column group will handle it. except there is only one column 
+             * group. 
+             */
+            if (group_size > 1)
+            {
+              schema->find_offset_first_column_group_schema(
+                  table_id, def_array[i].column_name_id_, column_group_id);
+            }
+            else 
+            {
+              column_group_id = group_id;
+            }
+            if (column_group_id == group_id)
+            {
+              iret = current_scan_column_indexes_.add_column_id(
+                  ObScanColumnIndexes::Normal, static_cast<int32_t>(i), def_array[i].column_name_id_);
             }
           }
         }
@@ -253,6 +228,7 @@ namespace oceanbase
       {
         uint64_t current_column_id = OB_INVALID_ID;
         int64_t index = 0;
+        ObRowkeyColumn column;
         // query columns in current group
         for (int64_t i = 0; i < column_id_size && OB_SUCCESS == iret; ++i)
         {
@@ -263,11 +239,25 @@ namespace oceanbase
                 current_column_id, i);
             iret = OB_INVALID_ARGUMENT;
           }
-          else if (current_column_id == 1)
+          else if ( schema->is_binary_rowkey_format(table_id) && NULL != rowkey_info_
+              && OB_SUCCESS == rowkey_info_->get_index(current_column_id, index, column))
           {
-            // column_id == 1 means get rowkey
-            iret = current_scan_column_indexes_.add_column_id(
-                ObScanColumnIndexes::ROWKEY_COLUMN, current_column_id);
+            // is binary rowkey column?
+            if (0 == group_seq)
+            {
+              iret = current_scan_column_indexes_.add_column_id( 
+                  ObScanColumnIndexes::Rowkey, static_cast<int32_t>(index), current_column_id);
+            }
+          }
+          else if ( (index = schema->find_offset_column_group_schema(
+                  table_id, ObSSTableSchemaColumnDef::ROWKEY_COLUMN_GROUP_ID, current_column_id)) >= 0 )
+          {
+            // is rowkey column?
+            if (0 == group_seq)
+            {
+              iret = current_scan_column_indexes_.add_column_id( 
+                  ObScanColumnIndexes::Rowkey, static_cast<int32_t>(index), current_column_id);
+            }
           }
           else if (!schema->is_column_exist(table_id, current_column_id))
           {
@@ -276,13 +266,32 @@ namespace oceanbase
             if (0 == group_seq)
             {
               iret = current_scan_column_indexes_.add_column_id(
-                  ObScanColumnIndexes::NOT_EXIST_COLUMN, current_column_id);
+                  ObScanColumnIndexes::NotExist, 0, current_column_id);
             }
           }
-          else if ( (index = schema->find_offset_column_group_schema(
-                  table_id, group_id, current_column_id)) >= 0 )
+          else
           {
-            iret = current_scan_column_indexes_.add_column_id(index, current_column_id);
+            /**
+             * if one column belongs to several column group, only the first 
+             * column group will handle it. except there is only one column 
+             * group. 
+             */
+            if (group_size > 1)
+            {
+              index = schema->find_offset_first_column_group_schema(
+                table_id, current_column_id, column_group_id);
+            }
+            else 
+            {
+              index = schema->find_offset_column_group_schema(
+                  table_id, group_id, current_column_id);
+              column_group_id = group_id;
+            }
+            if (index >= 0 && column_group_id == group_id)
+            {
+              iret = current_scan_column_indexes_.add_column_id(
+                  ObScanColumnIndexes::Normal, static_cast<int32_t>(index), current_column_id);
+            }
           }
         }
       }
@@ -320,11 +329,11 @@ namespace oceanbase
     {
       index_array_cursor_ = INVALID_CURSOR; 
 
-      const ObRange &range = scan_param_->get_range();
+      const ObNewRange &range = scan_param_->get_range();
       index_array_.block_count_ = ObBlockPositionInfos::NUMBER_OF_BATCH_BLOCK_INFO; 
 
-      if ( (!range.border_flag_.is_min_value())
-          && (!range.border_flag_.is_max_value())
+      if ( (!range.start_key_.is_min_row())
+          && (!range.end_key_.is_max_row())
           && range.start_key_ == range.end_key_) // single row scan, just one block.
       {
         index_array_.block_count_ = 1; 
@@ -416,12 +425,17 @@ namespace oceanbase
 
       if (OB_SUCCESS == iret)
       {
+        if (index_array_.block_count_ > 0 && scan_param_->is_sync_read())
+        {
+          ObIOStat stat;
+          stat.sstable_id_ = sstable_reader_->get_sstable_id().sstable_file_id_;
+          stat.total_blocks_ = index_array_.block_count_;
+          stat.total_size_ = index_array_.position_info_[index_array_.block_count_ - 1].offset_
+            + index_array_.position_info_[index_array_.block_count_ - 1].size_
+            - index_array_.position_info_[0].offset_;
+          add_io_stat(stat);
+        }
         iret = prepare_read_blocks();
-        TBSYS_LOG(DEBUG, "search block index succeed, sstable_file_id: %ld, "
-            "total block count: %ld, index offset: %ld, index size: %ld, "
-            "query need block count=%ld",
-            info.sstable_file_id_, trailer.get_block_count(), 
-            info.offset_, info.size_, index_array_.block_count_);
       }
       else if (OB_BEYOND_THE_RANGE == iret)
       {
@@ -442,7 +456,8 @@ namespace oceanbase
     }
 
     int ObColumnGroupScanner::initialize(
-        ObBlockIndexCache* block_index_cache, ObBlockCache* block_cache)
+        ObBlockIndexCache* block_index_cache, ObBlockCache* block_cache,
+        const common::ObRowkeyInfo* rowkey_info)
     {
       int ret = OB_SUCCESS;
       uncompressed_data_bufsiz_ = UNCOMPRESSED_BLOCK_BUFSIZ;
@@ -459,7 +474,7 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "allocate uncompressed data buffer failed, sz=%ld",
             uncompressed_data_bufsiz_);
-        common::ModuleArena* internal_buffer_arena = GET_TSI(common::ModuleArena);
+        common::ModuleArena* internal_buffer_arena = GET_TSI_MULT(common::ModuleArena, TSI_SSTABLE_MODULE_ARENA_1);
         TBSYS_LOG(ERROR, "thread local page arena hold memory usage,"
             "total=%ld,used=%ld,pages=%ld", internal_buffer_arena->total(),
             internal_buffer_arena->used(), internal_buffer_arena->pages());
@@ -469,7 +484,7 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "allocate block internal data buffer failed, sz=%ld",
             block_internal_bufsiz_);
-        common::ModuleArena* internal_buffer_arena = GET_TSI(common::ModuleArena);
+        common::ModuleArena* internal_buffer_arena = GET_TSI_MULT(common::ModuleArena, TSI_SSTABLE_MODULE_ARENA_1);
         TBSYS_LOG(ERROR, "thread local page arena hold memory usage,"
             "total=%ld,used=%ld,pages=%ld", internal_buffer_arena->total(),
             internal_buffer_arena->used(), internal_buffer_arena->pages());
@@ -478,6 +493,7 @@ namespace oceanbase
       {
         block_index_cache_ = block_index_cache;
         block_cache_ = block_cache;
+        rowkey_info_ = rowkey_info;
 
         iterate_status_ = ITERATE_NOT_START;
         index_array_.block_count_ = 0;
@@ -489,6 +505,7 @@ namespace oceanbase
     int ObColumnGroupScanner::set_scan_param(
         const uint64_t group_id, 
         const uint64_t group_seq,
+        const int64_t group_size, 
         const ObSSTableScanParam* scan_param, 
         const ObSSTableReader* const sstable_reader)
     {
@@ -506,7 +523,8 @@ namespace oceanbase
         iret = OB_NOT_INIT;
       }
       else if (OB_SUCCESS != (iret = 
-            trans_input_column_id(group_id, group_seq, scan_param, sstable_reader)))
+            trans_input_column_id(group_id, group_seq, group_size, 
+              scan_param, sstable_reader)))
       {
         TBSYS_LOG(ERROR, "trans_input_column_id error, iret=%d", iret);
       }
@@ -519,7 +537,7 @@ namespace oceanbase
         group_seq_ = group_seq;
 
         scan_param_->get_range().to_string(range_buf, OB_RANGE_STR_BUFSIZ);
-        TBSYS_LOG(DEBUG, "begin to scan ,  table id=%ld, group id=%ld, "
+        TBSYS_LOG(DEBUG, "cg scanner begin to scan table id=%ld, group id=%ld, "
             "sstable id=%ld, input range:%s, iterate_status_=%ld, "
             "scan param::is reverse=%d, result cache:%d, read mode:%d", 
             scan_param_->get_table_id(), group_id_, 
@@ -571,7 +589,7 @@ namespace oceanbase
         else
         {
           iret = block_cache_->get_block_aio(sstable_file_id, 
-              pos.offset_, pos.size_, handler, TIME_OUT_US, table_id, group_id_);
+              pos.offset_, pos.size_, handler, OB_AIO_TIMEOUT_US, table_id, group_id_);
         }
 
         if (iret == pos.size_)
@@ -586,18 +604,16 @@ namespace oceanbase
         }
       }
 
-
       ObRecordHeader header;
       if (OB_SUCCESS == iret)
       {
         memset(&header, 0, sizeof(header));
-        iret = ObRecordHeader::check_record(
+        iret = ObRecordHeader::get_record_header(
             block_data_ptr, block_data_size, 
-            ObSSTableWriter::DATA_BLOCK_MAGIC, header, 
-            compressed_data_buffer, compressed_data_bufsiz);
+            header, compressed_data_buffer, compressed_data_bufsiz);
         if (OB_SUCCESS != iret)
         {
-          TBSYS_LOG(ERROR, "check record header error, iret=%d, block data size=%ld", 
+          TBSYS_LOG(ERROR, "get record header error, iret=%d, block data size=%ld", 
               iret, compressed_data_bufsiz);
         }
         else
@@ -605,8 +621,8 @@ namespace oceanbase
           // size not enough; realloc new memory.
           if (header.data_length_ > uncompressed_data_bufsiz_)
           {
-            TBSYS_LOG(WARN, "block data length=%ld > fixed length=%ld, "
-                "block:(fileid=%ld,table_id=%ld,offset=%ld,size=%ld)",
+            TBSYS_LOG(WARN, "block data length=%d > fixed length=%ld, "
+                "block:(fileid=%ld,table_id=%lu,offset=%ld,size=%ld)",
                 header.data_length_, uncompressed_data_bufsiz_,
                 sstable_file_id, table_id, pos.offset_, pos.size_
                 );
@@ -662,7 +678,7 @@ namespace oceanbase
       return iret;
     }
 
-    int ObColumnGroupScanner::fetch_next_block()
+    inline int ObColumnGroupScanner::fetch_next_block()
     {
       int iret = OB_SUCCESS;
       do
@@ -709,13 +725,20 @@ namespace oceanbase
           if (OB_SUCCESS == iret && NULL != block_data_ptr && block_data_size > 0)
           {
             bool need_looking_forward = false;
-            ObSSTableBlockScanner::BlockData block_data(
+            ObSSTableBlockReader::BlockData block_data(
                 block_internal_buffer_, block_internal_bufsiz_,
-                block_data_ptr, block_data_size, 
+                block_data_ptr, block_data_size);
+            //TODO, set rowkey info
+            int64_t rowkey_column_count = 0;
+            sstable_reader_->get_schema()->get_rowkey_column_count(
+                scan_param_->get_range().table_id_, rowkey_column_count);
+            ObSSTableBlockReader::BlockDataDesc data_desc(
+                rowkey_info_, rowkey_column_count,
                 sstable_reader_->get_trailer().get_row_value_store_style());
 
             iret = scanner_.set_scan_param(scan_param_->get_range(), 
-                scan_param_->is_reverse_scan(), block_data, need_looking_forward);
+                scan_param_->is_reverse_scan(), data_desc, block_data, 
+                need_looking_forward, scan_param_->is_not_exit_col_ret_nop());
 
             if (OB_SUCCESS == iret)
             {

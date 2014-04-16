@@ -1,18 +1,23 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_trans_buffer.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_trans_buffer.h / hash / common / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2010-09-16 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ // 根据memtable特性 线程不安全 只能单线程使用
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #ifndef  OCEANBASE_UPDATESERVER_TRANS_BUFFER_H_
 #define  OCEANBASE_UPDATESERVER_TRANS_BUFFER_H_
 #include <stdlib.h>
@@ -58,6 +63,4 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_UPDATESERVER_TRANS_BUFFER_H_
-
-
 

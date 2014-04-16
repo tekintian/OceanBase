@@ -27,14 +27,16 @@
 #include "common/ob_mod_define.h"
 #include "common/ob_action_flag.h"
 #include "common/ob_row_compaction.h"
+#include "common/utility.h"
 
 namespace oceanbase
 {
   namespace common
   {
-    ObRowCompaction::ObRowCompaction() : NODES_NUM_(OB_MAX_COLUMN_NUMBER),
+    ObRowCompaction::ObRowCompaction() : NODES_NUM_(OB_ALL_MAX_COLUMN_ID + 1),
                                          nodes_(NULL),
                                          list_(NULL),
+                                         tail_(NULL),
                                          cur_version_(0),
                                          iter_(NULL),
                                          is_row_changed_(false),
@@ -85,7 +87,9 @@ namespace oceanbase
       else
       {
         list_ = NULL;
+        tail_ = NULL;
         iter_ = iter;
+        prev_cell_ = NULL;
       }
       return ret;
     }
@@ -151,15 +155,38 @@ namespace oceanbase
       return ret;
     }
 
+    int ObRowCompaction::is_row_finished(bool *is_row_finished)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == nodes_
+          || NULL == iter_)
+      {
+        TBSYS_LOG(WARN, "nodes=%p iter=%p can not work", nodes_, iter_);
+        ret = OB_ERROR;
+      }
+      else if (NULL == list_)
+      {
+        ret = OB_ITER_END;
+      }
+      else
+      {
+        if (NULL != is_row_finished)
+        {
+          *is_row_finished = (NULL == list_->next);
+        }
+      }
+      return ret;
+    }
+
     int ObRowCompaction::row_compaction_()
     {
       int ret = OB_SUCCESS;
       int64_t row_ext_flag = 0;
       if (NULL != prev_cell_)
       {
+        ret = add_cell_(prev_cell_, row_ext_flag);
         cur_cell_.table_id_ = prev_cell_->table_id_;
         cur_cell_.row_key_ = prev_cell_->row_key_;
-        ret = add_cell_(prev_cell_, row_ext_flag);
         prev_cell_ = NULL;
       }
 
@@ -176,7 +203,8 @@ namespace oceanbase
           {
             ret = add_cell_(cell_info, row_ext_flag);
           }
-          else if (NULL == list_)
+          else if (NULL == list_
+                  && 0 == row_ext_flag)
           {
             ret = add_cell_(cell_info, row_ext_flag);
             cur_cell_.table_id_ = cell_info->table_id_;
@@ -199,13 +227,19 @@ namespace oceanbase
       {
         if (NOP_FLAG & row_ext_flag)
         {
-          row_nop_node_.next = list_;
-          list_ = &row_nop_node_;
+          if (NULL == list_)
+          {
+            row_nop_node_.next = list_;
+            list_ = &row_nop_node_;
+          }
         }
         if (ROW_DOES_NOT_EXIST_FLAG & row_ext_flag)
         {
-          row_not_exist_node_.next = list_;
-          list_ = &row_not_exist_node_;
+          if (NULL == list_)
+          {
+            row_not_exist_node_.next = list_;
+            list_ = &row_not_exist_node_;
+          }
         }
         if (DEL_ROW_FLAG & row_ext_flag)
         {
@@ -222,7 +256,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObRowCompaction::add_cell_(ObCellInfo *cell_info, int64_t &row_ext_flag)
+    int ObRowCompaction::add_cell_(const ObCellInfo *cell_info, int64_t &row_ext_flag)
     {
       int ret = OB_SUCCESS;
       if (NULL == cell_info)
@@ -235,7 +269,10 @@ namespace oceanbase
       {
         if (ObActionFlag::OP_DEL_ROW == cell_info->value_.get_ext())
         {
-          row_ext_flag |= DEL_ROW_FLAG;
+          row_ext_flag = DEL_ROW_FLAG;
+          list_ = NULL;
+          tail_ = NULL;
+          cur_version_ += 1;
         }
         else if (ObActionFlag::OP_ROW_DOES_NOT_EXIST == cell_info->value_.get_ext())
         {
@@ -262,14 +299,28 @@ namespace oceanbase
         if (cur_version_ == node->version)
         {
           ret = node->value.apply(cell_info->value_);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "apply fail dest=[%s] src=[%s] column_id=%lu",
+                      print_obj(node->value), print_obj(cell_info->value_), cell_info->column_id_);
+          }
         }
         else
         {
           node->version = cur_version_;
           node->column_id = cell_info->column_id_;
           node->value = cell_info->value_;
-          node->next = list_;
-          list_ = node;
+          node->next = NULL;
+          if (NULL == list_)
+          {
+            list_ = node;
+          }
+          else
+          {
+            tail_->next = node;
+          }
+          // 使用tail指针 为了保证数据有序
+          tail_ = node;
         }
       }
       return ret;

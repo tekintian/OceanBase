@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./test/btree_base_test.cpp for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #include <limits.h>
 #include <btree_read_handle_new.h>
 #include <id_btree.h>
@@ -285,4 +270,3 @@ namespace oceanbase
     }
   } // end namespace common
 } // end namespace oceanbase
-

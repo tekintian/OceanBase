@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc. 
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
  *
- * ob_sstable_block_index_buffer.cpp
+ * ob_sstable_block_index_buffer.cpp is for what ...
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   Author fangji.hcm <fangji.hcm@taobao.com>
  *
  */
 
@@ -54,7 +52,7 @@ namespace oceanbase
       }
       
       if (OB_SUCCESS == ret 
-          && (OB_SUCCESS == (ret = encode_i16(buf, buf_len, pos, reserved16_)))
+          && (OB_SUCCESS == (ret = encode_i16(buf, buf_len, pos, rowkey_column_count_)))
           && (OB_SUCCESS == (ret = encode_i16(buf, buf_len, pos, column_group_id_)))
           && (OB_SUCCESS == (ret = encode_i32(buf, buf_len, pos, table_id_)))
           && (OB_SUCCESS == (ret = encode_i32(buf, buf_len, pos, block_record_size_)))
@@ -86,7 +84,7 @@ namespace oceanbase
       }
 
       if (OB_SUCCESS == ret 
-          && (OB_SUCCESS == (ret = decode_i16(buf, data_len, pos, &reserved_)))
+          && (OB_SUCCESS == (ret = decode_i16(buf, data_len, pos, &rowkey_column_count_)))
           && (OB_SUCCESS == (ret = decode_i16(buf, data_len, pos,
                                        reinterpret_cast<int16_t*>(&column_group_id_))))
           && (OB_SUCCESS == (ret = decode_i32(buf, data_len, pos, 
@@ -108,7 +106,7 @@ namespace oceanbase
     
     DEFINE_GET_SERIALIZE_SIZE(ObSSTableBlockIndexItem)
     {
-      return (encoded_length_i16(reserved16_)
+      return (encoded_length_i16(rowkey_column_count_)
               + encoded_length_i16(column_group_id_)
               + encoded_length_i32(table_id_)
               + encoded_length_i32(block_record_size_) 
@@ -173,6 +171,51 @@ namespace oceanbase
     }
 
     
+    int ObSSTableBlockIndexBuffer::add_key(const ObRowkey& key)
+    {
+      int ret = OB_SUCCESS;
+
+      int64_t rowkey_len = key.get_serialize_objs_size();
+     
+      if (0 >= key.get_obj_cnt() || NULL == key.get_obj_ptr())
+      {
+        TBSYS_LOG(WARN, "invalid argument key_len=%ld, key_ptr=%p", 
+            key.get_obj_cnt(), key.get_obj_ptr());
+        ret = OB_ERROR;
+      }
+      
+      if (OB_SUCCESS == ret)
+      {
+        if (NULL == block_tail_ || 
+            (NULL != block_tail_ && block_tail_->block_size_ - block_tail_->cur_pos_ <= rowkey_len))
+        {
+          ret = alloc_block();
+          if (OB_ERROR == ret)
+          {
+            TBSYS_LOG(WARN, "failed to alloc mem block ret=%d",ret);
+          }
+        }
+
+        if (OB_SUCCESS == ret)
+        {
+          if (NULL == block_tail_ || 
+              (NULL != block_tail_ && block_tail_->block_size_ - block_tail_->cur_pos_ <= rowkey_len))
+          {
+            ret = OB_ERROR;
+          }
+          else
+          {
+            int64_t pos = block_tail_->cur_pos_;
+            int64_t size = block_tail_->block_size_;
+            key.serialize_objs(block_tail_->data_, size, pos);
+            data_size_ += rowkey_len;
+            block_tail_->cur_pos_ = static_cast<int32_t>(pos);
+          }
+        }
+      }
+      return ret;
+    }
+
     int ObSSTableBlockIndexBuffer::add_key(const ObString& key)
     {
       int ret = OB_SUCCESS;
@@ -256,7 +299,7 @@ namespace oceanbase
             if (OB_SUCCESS == ret)
             {
               data_size_ += serialize_size;
-              block_tail_->cur_pos_ += serialize_size;
+              block_tail_->cur_pos_ = static_cast<int32_t>(block_tail_->cur_pos_ + serialize_size);
             }
           }
         }
