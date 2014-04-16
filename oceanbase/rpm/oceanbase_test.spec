@@ -5,8 +5,8 @@
 # it under the terms of the GNU General Public License version 2 as
 # published by the Free Software Foundation.
 #
-# oceanbase.spec is for what ...
-#
+# oceanbase_test.spec for hudson build test
+# http://10.232.4.35:8765/hudson/job/oceanbase_zhuweng/
 # Version: $id$
 #
 # Authors:
@@ -25,12 +25,7 @@ Vendor: TaoBao
 Prefix:%{_prefix}
 Source:%{NAME}-%{VERSION}.tar.gz
 BuildRoot: %(pwd)/%{name}-root
-%if 0%{?el6}
-BuildRequires: t-csrd-tbnet-devel >= 1.0.9 lzo >= 2.06 snappy >= 1.1.2 libaio-devel >= 0.3 t_libeasy-devel = 1.0.21-287.el6 openssl-devel >= 0.9.8 mysql-devel >= 5.1.0 taobao-jdk >= 1.6.0
-%else
-BuildRequires: t-csrd-tbnet-devel >= 1.0.9 lzo >= 2.06 snappy >= 1.1.2 libaio-devel >= 0.3 t_libeasy-devel = 1.0.21-287.el6 openssl-devel >= 0.9.8 mysql-devel >= 5.1.0 taobao-jdk >= 1.6.0
-%endif
-Requires: lzo = 20:2.0.6 snappy = 20:1.1.2 libaio >= 0.3 openssl >= 0.9.8
+Requires: lzo = 20:2.0.6 snappy = 20:1.1.2 libaio >= 0.3 openssl >= 0.9.8 perl-DBI
 AutoReqProv: no
 
 %package -n oceanbase-utils
@@ -39,13 +34,12 @@ group: Development/Tools
 Version: %VERSION
 Release: %{RELEASE}
 
-
 %package -n oceanbase-devel
 summary: OceanBase client library
 group: Development/Libraries
 Version: %VERSION
-BuildRequires:curl >= 7.15.5 mysql-devel >= 5.1.0 t-db-congo-drcmessage >= 0.1.2-40 tb-lua-dev >= 5.1.4
-Requires: curl >= 7.15.5 mysql-devel >= 5.1.0 t-db-congo-drcmessage >= 0.1.2-40 openssl-devel >= 0.9.8
+BuildRequires: t-db-congo-drcmessage >= 0.1.2-40 tb-lua-dev >= 5.1.4
+Requires: clrl >= 7.15.5 mysql-devel >= 5.1.0
 Release: %{RELEASE}
 
 %description
@@ -65,7 +59,8 @@ OceanBase client library
 %build
 chmod u+x build.sh
 ./build.sh init
-./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes --with-tblib-root=/opt/csr/common --with-easy-root=/usr --with-easy-lib-path=/usr/lib64 --with-drc-root=/home/ds
+# use the following line for local bulid
+./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes CPPFLAGS="-I/home/xiaojun.chengxj/usr_oceanbase/include -I/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.0.x86_64/include/linux -I/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.0.x86_64/include/" LDFLAGS="-L/home/xiaojun.chengxj/usr_oceanbase/lib -L/home/xiaojun.chengxj/usr_oceanbase/lib64"
 make %{?_smp_mflags}
 
 %install
@@ -87,18 +82,16 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(0755, admin, admin)
 %dir %{_prefix}/etc
-%dir %{_prefix}/etc/supervisor
 %dir %{_prefix}/bin
 %dir %{_prefix}/lib
 %config(noreplace) %{_prefix}/etc/schema.ini
-%config(noreplace) %{_prefix}/etc/lsyncserver.conf.template
+%config %{_prefix}/etc/lsyncserver.conf.template
 %config %{_prefix}/etc/sysctl.conf
 %config %{_prefix}/etc/snmpd.conf
 %config %{_prefix}/etc/importserver.conf.template
 %config %{_prefix}/etc/importcli.conf.template
 %config %{_prefix}/etc/configuration.xml.template
 %config %{_prefix}/etc/proxyserver.conf.template
-%config %{_prefix}/etc/supervisor/lms.ini
 %{_prefix}/bin/rootserver
 %{_prefix}/bin/updateserver
 %{_prefix}/bin/mergeserver
@@ -116,7 +109,6 @@ rm -rf $RPM_BUILD_ROOT
 %{_prefix}/bin/importserver.py
 %{_prefix}/bin/importcli.py
 %{_prefix}/bin/mrsstable.jar
-%{_prefix}/bin/oberror
 %{_prefix}/lib/liblzo_1.0.a
 %{_prefix}/lib/liblzo_1.0.la
 %{_prefix}/lib/liblzo_1.0.so
@@ -150,31 +142,22 @@ rm -rf $RPM_BUILD_ROOT
 %{_prefix}/mrsstable_lib_6u/liblzo2.so
 %{_prefix}/mrsstable_lib_6u/libsnappy.so
 %{_prefix}/bin/oceanbase.pl
-%{_prefix}/bin/dooba
 %config %{_prefix}/etc/oceanbase.conf.template
 %{_prefix}/tests/
 
 %files -n oceanbase-utils
 %defattr(0755, admin, admin)
 %{_prefix}/bin/ob_import
-%{_prefix}/bin/ob_load_meter
 
 %files -n oceanbase-devel
 %defattr(0755, admin, admin)
-%dir %{_prefix}/lib
-%dir %{_prefix}/etc
-%dir %{_prefix}/include
-%dir %{_prefix}/bin
-%{_prefix}/lib/liboblog.a
-%{_prefix}/lib/liboblog.la
-%{_prefix}/lib/liboblog.so
-%{_prefix}/lib/liboblog.so.1
 %{_prefix}/lib/liboblog.so.1.0.0
+%{_prefix}/lib/liboblog.a
 %config(noreplace) %{_prefix}/etc/liboblog.conf
 %config(noreplace) %{_prefix}/etc/liboblog.partition.lua
+%dir %{_prefix}/include
 %{_prefix}/include/ob_define.h
 %{_prefix}/include/liboblog.h
-%{_prefix}/bin/oblog_tailf
 
 %post
 chown -R admin:admin $RPM_INSTALL_PREFIX
