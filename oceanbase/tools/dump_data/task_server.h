@@ -1,4 +1,4 @@
-#ifndef TASK_SERVER_H_ 
+#ifndef TASK_SERVER_H_
 #define TASK_SERVER_H_
 
 #include "rpc_stub.h"
@@ -10,7 +10,7 @@
 
 namespace oceanbase
 {
-  namespace tools 
+  namespace tools
   {
     class TaskServer: public BaseServer
     {
@@ -26,27 +26,33 @@ namespace oceanbase
       int init(const int64_t thread, const int64_t queue, RpcStub * rpc,
           const char * dev, const int32_t port);
 
+      // init task server
+      virtual int initialize(void);
       // init service
-      virtual int init_service(void);
-      
-      // dispatcher process 
+      virtual int start_service(void);
+
+      // dispatcher process
       int do_request(common::ObPacket * base_packet);
-      
+
       // get task manager and factory
       TaskManager & get_task_manager(void);
-      
+
       TaskFactory & get_task_factory(void);
 
+      //dump_tablets
+      void dump_task_info(const char *file);
     private:
+      //signal handler
+      void signal_handler(int sig);
+
       // check inner stat
       bool check_inner_stat(void) const;
 
       // fetch task
       int handle_fetch_task(common::ObPacket * packet);
-      
+
       // finish task
       int handle_finish_task(common::ObPacket * packet);
-      
     private:
       enum STAT
       {
@@ -78,7 +84,7 @@ namespace oceanbase
     {
       return task_manager_;
     }
-        
+
     inline TaskFactory & TaskServer::get_task_factory(void)
     {
       return task_factory_;

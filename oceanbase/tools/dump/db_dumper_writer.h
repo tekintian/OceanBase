@@ -24,6 +24,7 @@
 #include "common/file_utils.h"
 #include "common/page_arena.h"
 #include "common/thread_buffer.h"
+#include "file_appender.h"
 
 #include <set>
 #include <list>
@@ -43,7 +44,12 @@ class RowKeyMemStorage;
 class DbDumperWriteHandler {
   public:
     virtual ~DbDumperWriteHandler() { }
-    virtual int push_record(const char *data, int len) { return OB_SUCCESS; }
+    virtual int push_record(const char *data, int len) 
+    { 
+      UNUSED(data);
+      UNUSED(len);
+      return OB_SUCCESS; 
+    }
     virtual int start() { return OB_SUCCESS; }
     virtual void stop() {  }
     virtual uint64_t get_id() { return 0; }
@@ -122,7 +128,7 @@ class DbDumperWriter : public Runnable, public DbDumperWriteHandler {
 
     uint64_t id_;
     std::string path_;
-    FileUtils file_;
+    AppendableFile *file_;
 
     std::list<RecordInfo *> records_;
 

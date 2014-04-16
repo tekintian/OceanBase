@@ -1,5 +1,5 @@
 /**
- * (C) 2010 Taobao Inc.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
@@ -17,11 +17,6 @@
 using namespace oceanbase::common;
 using namespace oceanbase::syschecker;
 
-namespace
-{
-  const char* PUBLIC_SECTION_NAME = "public";
-}
-
 int main(int argc, char* argv[])
 {
   int ret               = OB_SUCCESS;
@@ -34,7 +29,7 @@ int main(int argc, char* argv[])
   }
   else 
   {
-    ret = sm->start(argc, argv, PUBLIC_SECTION_NAME);
+    ret = sm->start(argc, argv);
   }
 
   return ret;

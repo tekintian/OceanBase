@@ -1,5 +1,5 @@
 /**
- * (C) 2010 Taobao Inc.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
@@ -40,7 +40,7 @@ namespace oceanbase
       int set_mutator_add(const ObOpParam& write_param, 
                           common::ObMutator& mutator,
                           const ObOpCellParam& cell_param, 
-                          const common::ObString& row_key);
+                          const common::ObRowkey& row_key);
 
     private:
       DISALLOW_COPY_AND_ASSIGN(ObWriteWorker);

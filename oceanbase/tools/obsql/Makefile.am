@@ -13,7 +13,7 @@ LDADD = $(top_builddir)/src/chunkserver/libchunkserver.a \
         ${TBLIB_ROOT}/lib/libtbnet.a \
         ${TBLIB_ROOT}/lib/libtbsys.a 
 
-AM_LDFLAGS = -lpthread -lc -lm -lrt -ldl -laio -lnuma ${GCOV_LIB}
+AM_LDFLAGS = -lpthread -lc -lm -lrt -ldl -laio ${GCOV_LIB}
 CXXFLAGS = -D__STDC_LIMIT_MACROS -g -Wall -DORDER_SERIALIZE -DCOMPATIBLE -D_BTREE_ENGINE_ #-O2 -fno-strict-aliasing
 
 bin_PROGRAMS = obsql

@@ -46,6 +46,115 @@ namespace oceanbase
       return ret;
     }
 
+    int get_sstable_directory(const char* disk_path, char *path, const int64_t path_len)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == disk_path || NULL == path || path_len < 0)
+      {
+        TBSYS_LOG(WARN, "get_sstable_directory invalid arguments, "
+            "disk_path=%p,path=%p,path_len=%ld", disk_path, path, path_len);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        int bufsiz = snprintf(path, path_len, "%s/%s/sstable", "./", disk_path);
+        if (bufsiz + 1 > path_len)
+        {
+          TBSYS_LOG(WARN, "get_sstable_directory, path_len=%ld <= bufsiz=%d", path_len, bufsiz);
+          ret = OB_SIZE_OVERFLOW;
+        }
+      }
+
+
+      return ret;
+    }
+
+    int get_recycle_path(const ObSSTableId& sstable_id, char *path, const int64_t path_len)
+    {
+      int ret = OB_SUCCESS;
+      if (sstable_id.sstable_file_offset_ < 0 || NULL == path || path_len < 0)
+      {
+        TBSYS_LOG(WARN, "get_recycle_path invalid arguments, "
+            "offset=%ld, path=%p,path_len=%ld",
+            sstable_id.sstable_file_offset_, path, path_len);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        // read from configure file
+        const char *data_dir = "data";
+        if (OB_SUCCESS == ret)
+        {
+          int32_t disk_no =  (sstable_id.sstable_file_id_ & DISK_NO_MASK);
+          if (disk_no < 0)
+          {
+            TBSYS_LOG(WARN, "get_recycle_path, sstable file id = %ld invalid",
+                sstable_id.sstable_file_id_);
+            ret = OB_ERROR;
+          }
+          else
+          {
+            int bufsiz = snprintf(path, path_len, "%s/%d/Recycle/%ld",
+                data_dir, disk_no, sstable_id.sstable_file_id_);
+            if (bufsiz + 1 > path_len)
+            {
+              TBSYS_LOG(WARN, "get_recycle_path, path_len=%ld <= bufsiz=%d",
+                  path_len, bufsiz);
+              ret = OB_SIZE_OVERFLOW;
+            }
+          }
+        }
+      }
+
+      return ret;
+    }
+
+    int get_recycle_directory(const char* disk_path, char *path, const int64_t path_len)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == disk_path || NULL == path || path_len < 0)
+      {
+        TBSYS_LOG(WARN, "get_recycle_directory invalid arguments, "
+            "disk_path=%p,path=%p,path_len=%ld", disk_path, path, path_len);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        int bufsiz = snprintf(path, path_len, "./%s/Recycle", disk_path);
+        if (bufsiz + 1 > path_len)
+        {
+          TBSYS_LOG(WARN, "get_recycle_directory , path_len=%ld <= bufsiz=%d", path_len, bufsiz);
+          ret = OB_SIZE_OVERFLOW;
+        }
+      }
+
+
+      return ret;
+    }
+
+    int get_bypass_sstable_directory(const char* disk_path, char *path, const int64_t path_len)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == disk_path || NULL == path || path_len < 0)
+      {
+        TBSYS_LOG(WARN, "get_sstable_directory invalid arguments, "
+            "disk_path=%p,path=%p,path_len=%ld", disk_path, path, path_len);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        int bufsiz = snprintf(path, path_len, "./%s/bypass", disk_path);
+        if (bufsiz + 1 > path_len)
+        {
+          TBSYS_LOG(WARN, "get_sstable_directory, path_len=%ld <= bufsiz=%d", path_len, bufsiz);
+          ret = OB_SIZE_OVERFLOW;
+        }
+      }
+
+
+      return ret;
+    }
+
     int get_sstable_path(const ObSSTableId& sstable_id, char *path, const int64_t path_len)
     {
       int ret = OB_SUCCESS;

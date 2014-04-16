@@ -54,7 +54,7 @@ class DbDumperMgr {
 
     int64_t get_start_log();
 
-    ObSchemaManager schema_mgr_;
+//    ObSchemaManager schema_mgr_;
     OceanbaseDb *db_;
     CRWLock mutex_;
 

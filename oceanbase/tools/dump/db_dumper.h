@@ -45,6 +45,14 @@ const int kRowkeyPerThd = 5000;
 
 class DbDumperWriteHandler;
 
+struct TableRowkey {
+  ObRowkey rowkey;
+  uint64_t table_id;
+  uint64_t timestamp;
+  int64_t seq;
+  int op;
+};
+
 class DbDumper : public RowkeyHandler {
   public:
     struct DbTableDumpWriter {
@@ -59,20 +67,36 @@ class DbDumper : public RowkeyHandler {
 
     int init(OceanbaseDb *db);
 
-    virtual int process_rowkey(const ObCellInfo &cell, int op, const char *timestamp);
+    virtual bool need_seq() { return true; }
 
-    virtual int do_dump_rowkey(uint64_t table_id, const ObString &rowkey, int op, DbRecordSet &rs); 
+    virtual int process_rowkey(const ObCellInfo &cell, int op, uint64_t timestamp, int64_t seq);
 
-    virtual int db_dump_rowkey(DbTableConfig *cfg, const ObString &rowkey, int op, DbRecordSet &rs); 
+    virtual int do_dump_rowkey(const TableRowkey *rowkeys, const int64_t size,
+                               DbRecordSet &rs); 
 
-    int pack_record(DbRecordSet &rs, uint64_t table_id, const ObString &rowkey, int op);
+    virtual int db_dump_rowkey(const TableRowkey *rowkeys, const int64_t size,
+                               DbRecordSet &rs); 
 
-    int64_t get_next_seq();
+    int pack_record(const TableRowkey *rowkeys, const int64_t size,
+                    DbRecordSet &rs);
+
+    int64_t merge_get_req(const TableRowkey *rowkeys, const int64_t size, TableRowkey *merged);
+
+    virtual int64_t get_next_seq();
 
     void wait_completion(bool rotate_date);
+
+    int dump_del_key(const TableRowkey &key);
+
   private:
-    int handle_del_row(DbTableConfig *cfg,const ObString &rowkey, int op);
+    int handle_del_row(const DbTableConfig *cfg,const ObRowkey &rowkey, int op, uint64_t timestamp, int64_t seq);
     int push_record(uint64_t table_id, const char *rec, int len);
+
+    int find_table_key(const TableRowkey *rowkeys, const int64_t size,
+                       const ObRowkey&rowkey, TableRowkey &table_key);
+
+    int append_del_keys(const TableRowkey *req_keys, const int64_t req_key_size,
+                        const TableRowkey *res_keys, const int64_t res_key_size);
 
     int setup_dumpers();
     void destroy_dumpers();

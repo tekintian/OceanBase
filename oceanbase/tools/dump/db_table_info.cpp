@@ -13,6 +13,7 @@
  *
  * =====================================================================================
  */
+#include "db_utils.h"
 #include "db_table_info.h"
 #include "db_record.h"
 #include "common/murmur_hash.h"
@@ -33,6 +34,9 @@ namespace oceanbase {
 
     TabletInfo::TabletInfo(void) 
     {
+      timestamp_ = time(NULL);
+      ocuppy_size_ = 0;
+      record_count_ = 0;
     }
 
     TabletInfo::~TabletInfo() 
@@ -46,13 +50,20 @@ namespace oceanbase {
       }
 
       rowkey_buffer_ = src.rowkey_buffer_;
+      record_count_ = src.record_count_;
+      ocuppy_size_ = src.ocuppy_size_;
+      timestamp_ = src.timestamp_;
     }
 
-    DbRowKey TabletInfo::get_end_key()
+    const ObRowkey &TabletInfo::get_end_key() const
     {
-      DbRowKey end_key;
-      end_key.assign_ptr(const_cast<char*>(rowkey_buffer_.data()), rowkey_buffer_.length());
-      return end_key;
+     return rowkey_;
+    }
+
+    bool TabletInfo::expired(uint64_t timeout) const
+    {
+      uint64_t now = time(NULL);
+      return (now - timestamp_ > timeout);
     }
 
     TabletInfo& TabletInfo::operator=(const TabletInfo &src)
@@ -62,13 +73,21 @@ namespace oceanbase {
       }
 
       rowkey_buffer_ = src.rowkey_buffer_;
+      record_count_ = src.record_count_;
+      ocuppy_size_ = src.ocuppy_size_;
+      timestamp_ = src.timestamp_;
+
       return *this;
     }
 
-    int TabletInfo::assign_end_key(const DbRowKey &key) 
+    int TabletInfo::assign_end_key(const ObRowkey &key) 
     {
-      rowkey_buffer_.assign(key.ptr(), key.length());
-      return common::OB_SUCCESS;
+      //ObMemBufAllocatorWrapper allocator(rowkey_buffer_);
+      int ret = key.deep_copy(rowkey_, rowkey_buffer_);
+      if (ret != OB_SUCCESS) {
+        TBSYS_LOG(WARN, "deep copy rowkey failed, ret = %d", ret);
+      }
+      return ret;
     }
 
     int TabletInfo::parse_one_cell(const common::ObCellInfo *cell) 
@@ -113,13 +132,13 @@ namespace oceanbase {
     void TabletInfo::dump_slice(void) 
     {
       char buf[1024];
-      int len = hex_to_str(get_end_key().ptr(), get_end_key().length(), buf, 1024);
+      int len = hex_to_str(get_end_key().ptr(), static_cast<int32_t>(get_end_key().length()), buf, 1024);
       buf[len * 2] = '\0';
 
       for(int i = 0; i < 3; i++) {
-        TBSYS_LOG(INFO, "ipv4:%x, cs_port:%d, ms_port:%d, tablet_vesion:%ld, avail:%d, key:%s", 
+        TBSYS_LOG(DEBUG, "ipv4:%x, cs_port:%d, ms_port:%d, tablet_vesion:%ld, avail:%d, key:%s, size=%ld, count=%ld", 
                   slice_[i].ip_v4, slice_[i].cs_port, slice_[i].ms_port, 
-                  slice_[i].tablet_version, slice_[i].server_avail, buf);
+                  slice_[i].tablet_version, slice_[i].server_avail, buf, ocuppy_size_, record_count_);
       }
     }
 
@@ -132,13 +151,14 @@ namespace oceanbase {
       return common::OB_SUCCESS;
     }
 
-    int TabletInfo::get_one_avail_slice(TabletSliceLocation &loc, const DbRowKey &rowkey)
+    int TabletInfo::get_one_avail_slice(TabletSliceLocation &loc, const ObRowkey &rowkey)
     {
       //TODO:dispatch requset to different server
-      int i;
-      int idx = common::murmurhash2((void *)rowkey.ptr(), rowkey.length(), 0) % 3;
+      int idx = common::murmurhash2((void *)rowkey.ptr(), static_cast<int32_t>(rowkey.length()), 0) % 3;
+      int ret = OB_SUCCESS;
 
-      for (i = 0; i < kTabletDupNr; i++) {
+      int i = 0;
+      for ( ; i < kTabletDupNr; i++) {
         if (slice_[idx].server_avail) {
           loc = slice_[idx];
           //          dump_slice();
@@ -150,10 +170,14 @@ namespace oceanbase {
         }
       }
 
-      if (i != kTabletDupNr)
-        return common::OB_SUCCESS;
-      else 
-        return common::OB_ERROR;
+      if (i == kTabletDupNr)
+        ret = OB_ERROR;
+
+      if (ret == OB_SUCCESS) {
+        stats_.hit_times++;
+      }
+
+      return ret;
     }
 
     int TabletInfo::parse_from_record(DbRecord *recp)

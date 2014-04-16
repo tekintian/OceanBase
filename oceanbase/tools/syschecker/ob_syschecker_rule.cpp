@@ -1,11 +1,11 @@
 /**
- * (C) 2010 Taobao Inc.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * ob_syschecker_rule.cpp for define syschecker test rule. 
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * ob_syschecker_rule.cpp for define syschecker test rule.
  *
  * Authors:
  *   huating <huating.zmq@taobao.com>
@@ -18,18 +18,18 @@
 #include "common/file_directory_utils.h"
 #include "ob_syschecker_rule.h"
 
-namespace oceanbase 
-{ 
-  namespace syschecker 
+namespace oceanbase
+{
+  namespace syschecker
   {
     using namespace common;
     using namespace serialization;
 
-    const char* ObSyscheckerRule::ALPHA_NUMERICS = 
+    const char* ObSyscheckerRule::ALPHA_NUMERICS =
       "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.-";
 
     //prime number in 1000
-    const int64_t ObSyscheckerRule::PRIME_NUM[] = 
+    const int64_t ObSyscheckerRule::PRIME_NUM[] =
     {
       2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,
       101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,193,197,199,
@@ -46,22 +46,25 @@ namespace oceanbase
     const char* READ_PARAM_FILE = "read_param_file.bin";
     const char* WRITE_PARAM_FILE = "write_param_file.bin";
 
-    const char* OP_TYPE_STR[] = 
+    const char* OP_TYPE_STR[] =
     {
       "OP_NULL",
-      "OP_ADD", 
+      "OP_ADD",
       "OP_UPDATE",
       "OP_INSERT",
       "OP_DELETE",
-      "OP_MIX",  
+      "OP_MIX",
       "OP_GET",
       "OP_SCAN",
-      "OP_MAX"      
+      "OP_SQL_GET",
+      "OP_SQL_SCAN",
+      "OP_MAX"
     };
 
     const char* OP_GEN_MODE_STR[] =
     {
       "GEN_NULL",
+      "GEN_RANDOM",
       "GEN_RANDOM",
       "GEN_SEQ",
       "GEN_COMBO_RANDOM",
@@ -69,7 +72,8 @@ namespace oceanbase
       "GEN_NEW_KEY",
       "GEN_VALID_WRITE",
       "GEN_INVALID_WRITE",
-      "GEN_VALID_ADD"      
+      "GEN_VALID_ADD",
+      "GEN_FROM_CONFIG"
     };
 
     const char* OBJ_TYPE_STR[] =
@@ -89,8 +93,8 @@ namespace oceanbase
     };
 
     ObOpParamGen::ObOpParamGen()
-    : gen_op_(GEN_RANDOM), gen_table_name_(GEN_RANDOM), 
-      gen_row_key_(GEN_RANDOM), gen_row_count_(GEN_RANDOM), 
+    : gen_op_(GEN_RANDOM), gen_table_name_(GEN_RANDOM),
+      gen_row_key_(GEN_RANDOM), gen_row_count_(GEN_RANDOM),
       gen_cell_count_(GEN_RANDOM), gen_cell_(GEN_RANDOM)
     {
 
@@ -109,7 +113,7 @@ namespace oceanbase
                       "    gen_row_key_: %s \n"
                       "    gen_row_count_: %s \n"
                       "    gen_cell_count_: %s \n"
-                      "    gen_cell_: %s \n", 
+                      "    gen_cell_: %s \n",
               OP_GEN_MODE_STR[gen_op_], OP_GEN_MODE_STR[gen_table_name_],
               OP_GEN_MODE_STR[gen_row_key_], OP_GEN_MODE_STR[gen_row_count_],
               OP_GEN_MODE_STR[gen_cell_count_], OP_GEN_MODE_STR[gen_cell_]);
@@ -120,10 +124,10 @@ namespace oceanbase
       int ret                 = OB_SUCCESS;
       int64_t serialize_size  = get_serialize_size();
 
-      if((NULL == buf) || (serialize_size + pos > buf_len)) 
+      if((NULL == buf) || (serialize_size + pos > buf_len))
       {
         TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld,"
-                        "serialize_size=%ld", 
+                        "serialize_size=%ld",
                   buf, buf_len, pos, serialize_size);
         ret = OB_ERROR;
       }
@@ -156,23 +160,23 @@ namespace oceanbase
       if (NULL == buf || serialize_size + pos > data_len)
       {
         TBSYS_LOG(WARN, "invalid param, buf=%p, data_len=%ld, pos=%ld,"
-                        "serialize_size=%ld", 
+                        "serialize_size=%ld",
                   buf, data_len, pos, serialize_size);
         ret = OB_ERROR;
       }
 
       if ((OB_SUCCESS == ret)
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&gen_op_)))
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&gen_table_name_)))
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&gen_row_key_)))
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&gen_row_count_)))
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&gen_cell_count_)))
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&gen_cell_))))
       {
         ret = OB_SUCCESS;
@@ -189,10 +193,10 @@ namespace oceanbase
 
     DEFINE_GET_SERIALIZE_SIZE(ObOpParamGen)
     {
-      return(encoded_length_i32(gen_op_) 
+      return(encoded_length_i32(gen_op_)
              + encoded_length_i32(gen_table_name_)
              + encoded_length_i32(gen_row_key_)
-             + encoded_length_i32(gen_row_count_) 
+             + encoded_length_i32(gen_row_count_)
              + encoded_length_i32(gen_cell_count_)
              + encoded_length_i32(gen_cell_));
     }
@@ -213,10 +217,11 @@ namespace oceanbase
       fprintf(stderr, "      op_type_: %s \n"
                       "      gen_cell_: %s \n"
                       "      column_name_: %.*s \n"
+                      "      column_id_: %ld \n"
                       "      cell_type_: %s \n"
-                      "      key_prefix_: %ld \n", 
-              OP_TYPE_STR[op_type_], OP_GEN_MODE_STR[gen_cell_], 
-              column_name_.length(), column_name_.ptr(), 
+                      "      key_prefix_: %ld \n",
+              OP_TYPE_STR[op_type_], OP_GEN_MODE_STR[gen_cell_],
+              column_name_.length(), column_name_.ptr(), column_id_,
               OBJ_TYPE_STR[cell_type_], key_prefix_);
       switch (cell_type_)
       {
@@ -248,10 +253,10 @@ namespace oceanbase
       int ret                 = OB_SUCCESS;
       int64_t serialize_size  = get_serialize_size();
 
-      if((NULL == buf) || (serialize_size + pos > buf_len)) 
+      if((NULL == buf) || (serialize_size + pos > buf_len))
       {
         TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld,"
-                        "serialize_size=%ld", 
+                        "serialize_size=%ld",
                   buf, buf_len, pos, serialize_size);
         ret = OB_ERROR;
       }
@@ -285,17 +290,17 @@ namespace oceanbase
 
       if (NULL == buf || data_len <= 0 || pos > data_len)
       {
-        TBSYS_LOG(WARN, "invalid param, buf=%p, data_len=%ld, pos=%ld,", 
+        TBSYS_LOG(WARN, "invalid param, buf=%p, data_len=%ld, pos=%ld,",
                   buf, data_len, pos);
         ret = OB_ERROR;
       }
 
       if ((OB_SUCCESS == ret)
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&op_type_)))
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&gen_cell_)))
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&cell_type_)))
           && (OB_SUCCESS == decode_i64(buf, data_len, pos, &key_prefix_)))
       {
@@ -318,7 +323,7 @@ namespace oceanbase
 
     DEFINE_GET_SERIALIZE_SIZE(ObOpCellParam)
     {
-      return(encoded_length_i32(op_type_) 
+      return(encoded_length_i32(op_type_)
              + encoded_length_i32(gen_cell_)
              + encoded_length_i32(cell_type_)
              + encoded_length_i64(key_prefix_)
@@ -359,10 +364,10 @@ namespace oceanbase
       int ret                 = OB_SUCCESS;
       int64_t serialize_size  = get_serialize_size();
 
-      if((NULL == buf) || (serialize_size + pos > buf_len)) 
+      if((NULL == buf) || (serialize_size + pos > buf_len))
       {
         TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld,"
-                        "serialize_size=%ld", 
+                        "serialize_size=%ld",
                   buf, buf_len, pos, serialize_size);
         ret = OB_ERROR;
       }
@@ -400,13 +405,13 @@ namespace oceanbase
 
       if (NULL == buf || data_len <= 0 || pos > data_len)
       {
-        TBSYS_LOG(WARN, "invalid param, buf=%p, data_len=%ld, pos=%ld,", 
+        TBSYS_LOG(WARN, "invalid param, buf=%p, data_len=%ld, pos=%ld,",
                   buf, data_len, pos);
         ret = OB_ERROR;
       }
 
       if ((OB_SUCCESS == ret)
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&op_type_)))
           && (OB_SUCCESS == decode_i32(buf, data_len, pos, &cell_count_))
           && (OB_SUCCESS == decode_i32(buf, data_len, pos, &rowkey_len_)))
@@ -437,7 +442,7 @@ namespace oceanbase
     {
       int64_t total_size = 0;
 
-      total_size += (encoded_length_i32(op_type_) 
+      total_size += (encoded_length_i32(op_type_)
                      + encoded_length_i32(cell_count_)
                      + encoded_length_i32(rowkey_len_)
                      + rowkey_len_);
@@ -450,8 +455,8 @@ namespace oceanbase
       return total_size;
     }
 
-    ObOpParam::ObOpParam() 
-    : loaded_(false), data_buf_(NULL), 
+    ObOpParam::ObOpParam()
+    : loaded_(false), data_buf_(NULL),
       data_buf_size_(PARAM_DATA_BUF_SIZE), data_len_(0)
     {
 
@@ -489,12 +494,13 @@ namespace oceanbase
                       "  is_wide_table_: %s \n"
                       "  op_type_: %s \n"
                       "  table_name_: %.*s \n"
+                      "  table_id_: %ld \n"
                       "  row_count_: %ld \n",
               invalid_op_ ? "true" : "false",
               is_read_ ? "true" : "false",
               is_wide_table_ ? "true" : "false",
               OP_TYPE_STR[op_type_], table_name_.length(),
-              table_name_.ptr(), row_count_);
+              table_name_.ptr(), table_id_, row_count_);
       param_gen_.display();
       for (int64_t i = 0; i < row_count_; ++i)
       {
@@ -512,7 +518,7 @@ namespace oceanbase
     {
       int ret           = OB_SUCCESS;
       char* new_buf     = NULL;
-      int64_t data_len  = size > data_buf_size_ 
+      int64_t data_len  = size > data_buf_size_
                           ? size : data_buf_size_;
 
       if (size <= 0)
@@ -520,10 +526,10 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid data length, size=%ld", size);
         ret = OB_ERROR;
       }
-      else if (NULL == data_buf_ 
+      else if (NULL == data_buf_
                || (NULL != data_buf_ && size > data_buf_size_))
       {
-        new_buf = static_cast<char*>(ob_malloc(data_len));
+        new_buf = static_cast<char*>(ob_malloc(data_len, ObModIds::TEST));
         if (NULL == new_buf)
         {
           TBSYS_LOG(WARN, "Problem allocating memory for data buffer");
@@ -536,7 +542,7 @@ namespace oceanbase
             ob_free(data_buf_);
             data_buf_ = NULL;
           }
-          data_buf_size_ = data_len;
+          data_buf_size_ = static_cast<int32_t>(data_len);
           data_buf_ = new_buf;
         }
       }
@@ -578,7 +584,7 @@ namespace oceanbase
         if (OB_SUCCESS == ret && serialize_size > 0
             && (OB_SUCCESS == (ret = ensure_space(serialize_size))))
         {
-          data_len_ = serialize_size;
+          data_len_ = static_cast<int32_t>(serialize_size);
           ret = serialize(data_buf_, data_len_, pos);
           if (OB_SUCCESS != ret)
           {
@@ -589,7 +595,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        wrote_len = file_util.write(data_buf_, data_len_);
+        wrote_len = static_cast<int32_t>(file_util.write(data_buf_, data_len_));
         if (wrote_len != data_len_)
         {
           TBSYS_LOG(ERROR, "failed to write file=%s, wrote_len=%d, "
@@ -599,8 +605,8 @@ namespace oceanbase
       }
 
       file_util.close();
-        
-      return ret;  
+
+      return ret;
     }
 
     int ObOpParam::load_param_from_file(const char* file_name)
@@ -635,10 +641,10 @@ namespace oceanbase
         }
       }
 
-      if (OB_SUCCESS == ret 
+      if (OB_SUCCESS == ret
           && (OB_SUCCESS == (ret = ensure_space(file_len))))
       {
-        read_len = file_util.read(data_buf_, file_len);
+        read_len = static_cast<int32_t>(file_util.read(data_buf_, file_len));
         if (read_len != file_len)
         {
            TBSYS_LOG(ERROR, "failed to read file=%s, read_len=%d, "
@@ -663,8 +669,8 @@ namespace oceanbase
       }
 
       file_util.close();
-        
-      return ret;      
+
+      return ret;
     }
 
     DEFINE_SERIALIZE(ObOpParam)
@@ -672,10 +678,10 @@ namespace oceanbase
       int ret                 = OB_SUCCESS;
       int64_t serialize_size  = get_serialize_size();
 
-      if((NULL == buf) || (serialize_size + pos > buf_len)) 
+      if((NULL == buf) || (serialize_size + pos > buf_len))
       {
         TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld,"
-                        "serialize_size=%ld", 
+                        "serialize_size=%ld",
                   buf, buf_len, pos, serialize_size);
         ret = OB_ERROR;
       }
@@ -723,19 +729,19 @@ namespace oceanbase
 
       if (NULL == buf || data_len <= 0 || pos > data_len)
       {
-        TBSYS_LOG(WARN, "invalid param, buf=%p, data_len=%ld, pos=%ld,", 
+        TBSYS_LOG(WARN, "invalid param, buf=%p, data_len=%ld, pos=%ld,",
                   buf, data_len, pos);
         ret = OB_ERROR;
       }
 
       if ((OB_SUCCESS == ret)
-          && (OB_SUCCESS == decode_i8(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i8(buf, data_len, pos,
                                       reinterpret_cast<int8_t*>(&invalid_op_)))
-          && (OB_SUCCESS == decode_i8(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i8(buf, data_len, pos,
                                       reinterpret_cast<int8_t*>(&is_read_)))
-          && (OB_SUCCESS == decode_i8(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i8(buf, data_len, pos,
                                       reinterpret_cast<int8_t*>(&is_wide_table_)))
-          && (OB_SUCCESS == decode_i32(buf, data_len, pos, 
+          && (OB_SUCCESS == decode_i32(buf, data_len, pos,
                                        reinterpret_cast<int32_t*>(&op_type_)))
           && (OB_SUCCESS == decode_i64(buf, data_len, pos, &row_count_)))
       {
@@ -773,7 +779,7 @@ namespace oceanbase
     {
       int64_t total_size = 0;
 
-      total_size += (encoded_length_i8(invalid_op_) 
+      total_size += (encoded_length_i8(invalid_op_)
                      + encoded_length_i8(is_read_)
                      + encoded_length_i8(is_wide_table_)
                      + encoded_length_i32(op_type_)
@@ -781,7 +787,7 @@ namespace oceanbase
 
       total_size += table_name_.get_serialize_size();
       total_size += param_gen_.get_serialize_size();
-      
+
       for (int64_t i = 0; i < row_count_; ++i)
       {
         total_size += row_[i].get_serialize_size();
@@ -792,8 +798,8 @@ namespace oceanbase
 
     ObSyscheckerRule::ObSyscheckerRule(ObSyscheckerSchema& syschecker_schema)
     : inited_(false), cur_max_prefix_(0), cur_max_suffix_(0),
-      syschecker_schema_(syschecker_schema), 
-      write_rule_count_(0), read_rule_count_(0), 
+      syschecker_schema_(syschecker_schema),
+      write_rule_count_(0), read_rule_count_(0),
       random_block_(NULL), random_block_size_(RANDOM_BLOCK_SIZE),
       syschecker_count_(0), is_specified_read_param_(false),
       operate_full_row_(false)
@@ -819,14 +825,14 @@ namespace oceanbase
       {
         if (random_block_size_ <= 0)
         {
-          TBSYS_LOG(WARN, "invalid param, random_block_size_=%ld", 
+          TBSYS_LOG(WARN, "invalid param, random_block_size_=%ld",
                     random_block_size_);
           ret = OB_ERROR;
         }
 
         if (OB_SUCCESS == ret)
         {
-          random_block_ = reinterpret_cast<char*>(ob_malloc(random_block_size_));
+          random_block_ = reinterpret_cast<char*>(ob_malloc(random_block_size_, ObModIds::TEST));
           if (NULL == random_block_)
           {
             TBSYS_LOG(WARN, "failed to allocate memory for random char block");
@@ -846,22 +852,13 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::init(const int64_t syschecker_count, 
-                               const bool is_specified,
-                               const bool is_full_row)
+    int ObSyscheckerRule::init(const ObSyscheckerParam& param)
     {
       int ret = OB_SUCCESS;
       ObOpParamGen write_param_gen;
       ObOpRule write_rule;
       ObOpParamGen read_param_gen;
       ObOpRule read_rule;
-
-      if (syschecker_count <=0)
-      {
-        TBSYS_LOG(WARN, "invalid param, syschecker_count=%ld", 
-                  syschecker_count);
-        ret = OB_ERROR;
-      }
 
       if (OB_SUCCESS == ret && (cur_max_prefix_ <= 0 || cur_max_suffix_ <= 0))
       {
@@ -873,20 +870,34 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        is_specified_read_param_ = is_specified;
-        syschecker_count_ = syschecker_count;
-        operate_full_row_ = is_full_row;
+        is_specified_read_param_ = param.is_specified_read_param();
+        syschecker_count_ = param.get_syschecker_count();
+        operate_full_row_ = param.is_operate_full_row();
+        perf_test_ = param.is_perf_test();
+        is_sql_read_ = param.is_sql_read();
+        read_table_type_ = static_cast<int32_t>(param.get_read_table_type());
+        write_table_type_ = static_cast<int32_t>(param.get_write_table_type());
+        get_row_cnt_ = param.get_get_row_cnt();
+        scan_row_cnt_ = param.get_scan_row_cnt();
+        update_row_cnt_  = param.get_update_row_cnt();
         ret = init_random_block();
       }
 
       if (OB_SUCCESS == ret)
       {
         /**
-         * now we just init all the rule with the same rule, we will add 
-         * more rule later 
+         * now we just init all the rule with the same rule, we will add
+         * more rule later
          */
         write_param_gen.gen_cell_ = GEN_VALID_WRITE;
         write_param_gen.gen_cell_count_ = GEN_VALID_WRITE;
+        if (perf_test_)
+        {
+          write_param_gen.gen_op_ = GEN_FROM_CONFIG;
+          write_param_gen.gen_table_name_ = GEN_FROM_CONFIG;
+          write_param_gen.gen_row_count_ = GEN_FROM_CONFIG;
+          write_param_gen.gen_row_key_ = GEN_FROM_CONFIG;
+        }
         strcpy(write_rule.rule_name_, "write_rule");
         write_rule.param_gen_ = write_param_gen;
         write_rule.invalid_op_ = false;
@@ -900,27 +911,40 @@ namespace oceanbase
           }
         }
         write_rule_count_ = MAX_WRITE_RULE_NUM;
-        write_rule_[0].invalid_op_ = true;  //the first rule is invalid rule
-        write_rule_[0].param_gen_.gen_cell_count_ = GEN_INVALID_WRITE;
-        write_rule_[0].param_gen_.gen_cell_ = GEN_INVALID_WRITE;
-        write_rule_[1].invalid_op_ = true;  //the second rule is random rule
-        write_rule_[1].param_gen_.gen_cell_count_ = GEN_RANDOM;
-        write_rule_[1].param_gen_.gen_cell_ = GEN_RANDOM;
-        
+        if (!perf_test_)
+        {
+          write_rule_[0].invalid_op_ = true;  //the first rule is invalid rule
+          write_rule_[0].param_gen_.gen_cell_count_ = GEN_INVALID_WRITE;
+          write_rule_[0].param_gen_.gen_cell_ = GEN_INVALID_WRITE;
+          write_rule_[1].invalid_op_ = true;  //the second rule is random rule
+          write_rule_[1].param_gen_.gen_cell_count_ = GEN_RANDOM;
+          write_rule_[1].param_gen_.gen_cell_ = GEN_RANDOM;
+        }
+
+        if (perf_test_)
+        {
+          read_param_gen.gen_op_ = GEN_FROM_CONFIG;
+          read_param_gen.gen_row_count_ = GEN_FROM_CONFIG;
+          read_param_gen.gen_table_name_ = GEN_FROM_CONFIG;
+          read_param_gen.gen_row_key_ = GEN_FROM_CONFIG;
+        }
         strcpy(read_rule.rule_name_, "read_rule");
         read_rule.param_gen_ = read_param_gen;
         read_rule.invalid_op_ = false;
         for (int64_t i = 0; i < MAX_READ_RULE_NUM; ++i)
         {
           read_rule_[i] = read_rule;
-          if (i > MAX_READ_RULE_NUM / 2)
+          if (!perf_test_ && i > MAX_READ_RULE_NUM / 2)
           {
             //get or scan sequence
             read_rule_[i].param_gen_.gen_row_key_ = GEN_SEQ;
           }
         }
         read_rule_count_ = MAX_READ_RULE_NUM;
-        read_rule_[0].param_gen_.gen_row_key_ = GEN_NEW_KEY;
+        if (!perf_test_)
+        {
+          read_rule_[0].param_gen_.gen_row_key_ = GEN_NEW_KEY;
+        }
         inited_ = true;
       }
 
@@ -929,7 +953,30 @@ namespace oceanbase
 
     ObOpType ObSyscheckerRule::get_random_read_op(const uint64_t random_num)
     {
-      return (random_num % READ_OP_COUNT == 0 ? OP_GET : OP_SCAN);
+      if (random_num % READ_OP_COUNT == 0 )
+      {
+        return is_sql_read_ ? OP_SQL_GET: OP_GET;
+      }
+      else
+      {
+        return is_sql_read_ ? OP_SQL_SCAN : OP_SCAN;
+      }
+    }
+
+    ObOpType ObSyscheckerRule::get_config_read_op(const uint64_t random_num)
+    {
+      if (get_row_cnt_ > 0 && scan_row_cnt_ == 0)
+      {
+        return is_sql_read_ ? OP_SQL_GET: OP_GET;
+      }
+      else if (get_row_cnt_ == 0 && scan_row_cnt_ > 0)
+      {
+        return is_sql_read_ ? OP_SQL_SCAN : OP_SCAN;
+      }
+      else
+      {
+        return (random_num % READ_OP_COUNT == 0 ? OP_GET : OP_SCAN);
+      }
     }
 
     ObOpType ObSyscheckerRule::get_random_write_op(const uint64_t random_num)
@@ -950,7 +997,7 @@ namespace oceanbase
       return (static_cast<ObOpType>(random_num % CELL_WRITE_OP_COUNT + OP_ADD));
     }
 
-    int ObSyscheckerRule::set_op_type(ObOpParam& op_param, 
+    int ObSyscheckerRule::set_op_type(ObOpParam& op_param,
                                       const uint64_t random_num)
     {
       int ret = OB_SUCCESS;
@@ -958,9 +1005,17 @@ namespace oceanbase
       switch (op_param.param_gen_.gen_op_)
       {
       case GEN_RANDOM:
+      case GEN_FROM_CONFIG:
         if (op_param.is_read_)
         {
-          op_param.op_type_ = get_random_read_op(random_num);
+          if (!perf_test_)
+          {
+            op_param.op_type_ = get_random_read_op(random_num);
+          }
+          else
+          {
+            op_param.op_type_ = get_config_read_op(random_num);
+          }
         }
         else
         {
@@ -970,7 +1025,7 @@ namespace oceanbase
 
       case GEN_SPECIFIED:
         //specified, check if it's valid
-        if (OP_NULL == op_param.op_type_ || (op_param.is_read_ 
+        if (OP_NULL == op_param.op_type_ || (op_param.is_read_
             && (op_param.op_type_ != OP_GET && op_param.op_type_ != OP_SCAN))
             || (!op_param.is_read_ && op_param.op_type_ >= OP_GET))
         {
@@ -982,13 +1037,13 @@ namespace oceanbase
 
       case GEN_SEQ:
       case GEN_COMBO_RANDOM:
-        TBSYS_LOG(WARN, "not implement type(%s) for generating operation type", 
+        TBSYS_LOG(WARN, "not implement type(%s) for generating operation type",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_op_]);
         ret = OB_ERROR;
         break;
 
       default:
-        TBSYS_LOG(WARN, "uknown generation type=%s", 
+        TBSYS_LOG(WARN, "uknown generation type=%s",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_op_]);
         ret = OB_ERROR;
         break;
@@ -997,7 +1052,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_table_name(ObOpParam& op_param, 
+    int ObSyscheckerRule::set_table_name(ObOpParam& op_param,
                                          const uint64_t random_num)
     {
       int ret = OB_SUCCESS;
@@ -1005,24 +1060,45 @@ namespace oceanbase
       switch (op_param.param_gen_.gen_table_name_)
       {
       case GEN_RANDOM:
-        if (random_num % ObSyscheckerSchema::TABLE_COUNT == 0)
+      case GEN_FROM_CONFIG:
+        if (perf_test_ && read_table_type_ != ALL_TABLE)
         {
-          op_param.table_name_ = syschecker_schema_.get_wt_name();
-          op_param.is_wide_table_ = true;
+          if (read_table_type_ == WIDE_TABLE)
+          {
+            op_param.table_name_ = syschecker_schema_.get_wt_name();
+            op_param.table_id_ = syschecker_schema_.get_wt_schema()->get_table_id();
+            op_param.is_wide_table_ = true;
+          }
+          else if (read_table_type_ == JOIN_TABLE)
+          {
+            op_param.table_name_ = syschecker_schema_.get_jt_name();
+            op_param.table_id_ = syschecker_schema_.get_jt_schema()->get_table_id();
+            op_param.is_wide_table_ = false;
+          }
         }
         else
         {
-          op_param.table_name_ = syschecker_schema_.get_jt_name();
-          op_param.is_wide_table_ = false;
+          if (random_num % ObSyscheckerSchema::TABLE_COUNT == 0)
+          {
+            op_param.table_name_ = syschecker_schema_.get_wt_name();
+            op_param.table_id_ = syschecker_schema_.get_wt_schema()->get_table_id();
+            op_param.is_wide_table_ = true;
+          }
+          else
+          {
+            op_param.table_name_ = syschecker_schema_.get_jt_name();
+            op_param.table_id_ = syschecker_schema_.get_jt_schema()->get_table_id();
+            op_param.is_wide_table_ = false;
+          }
         }
         //no break, go through
-        
+
       case GEN_SPECIFIED:
-        if (NULL == op_param.table_name_.ptr() 
+        if (NULL == op_param.table_name_.ptr()
             || op_param.table_name_.length() <= 0)
         {
           TBSYS_LOG(WARN, "get wrong table name from syschecker schema, "
-                          "table_name=%p, length=%d", 
+                          "table_name=%p, length=%d",
                     op_param.table_name_.ptr(), op_param.table_name_.length());
           ret = OB_ERROR;
         }
@@ -1030,13 +1106,13 @@ namespace oceanbase
 
       case GEN_SEQ:
       case GEN_COMBO_RANDOM:
-        TBSYS_LOG(WARN, "not implement type(%s) for generating table name", 
+        TBSYS_LOG(WARN, "not implement type(%s) for generating table name",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_table_name_]);
         ret = OB_ERROR;
         break;
 
       default:
-        TBSYS_LOG(WARN, "uknown generation type=%s", 
+        TBSYS_LOG(WARN, "uknown generation type=%s",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_table_name_]);
         ret = OB_ERROR;
         break;
@@ -1053,20 +1129,28 @@ namespace oceanbase
       switch (op_param.param_gen_.gen_row_count_)
       {
       case GEN_RANDOM:
+      case GEN_FROM_CONFIG:
         if (op_param.is_read_)
         {
-          if (OP_GET == op_param.op_type_)
+          if (OP_GET == op_param.op_type_ || OP_SQL_GET == op_param.op_type_)
           {
             if (!op_param.invalid_op_)
             {
-              op_param.row_count_ = random_num % (MAX_GET_ROW_COUNT - 1) + 1;
+              if (!perf_test_)
+              {
+                op_param.row_count_ = random_num % (MAX_GET_ROW_COUNT - 1) + 1;
+              }
+              else
+              {
+                op_param.row_count_ = get_row_cnt_;
+              }
             }
             else
             {
               op_param.row_count_ = random_num % (MAX_INVALID_ROW_COUNT - 1) + 1;
             }
           }
-          else if (OP_SCAN == op_param.op_type_) 
+          else if (OP_SCAN == op_param.op_type_ || OP_SQL_SCAN == op_param.op_type_)
           {
             op_param.row_count_ = SCAN_PARAM_ROW_COUNT;
           }
@@ -1075,12 +1159,19 @@ namespace oceanbase
         {
           if (!op_param.invalid_op_)
           {
-            op_param.row_count_ = random_num % (MAX_WRITE_ROW_COUNT - 1) + 1;
+            if (!perf_test_)
+            {
+              op_param.row_count_ = random_num % (MAX_WRITE_ROW_COUNT - 1) + 1;
+            }
+            else
+            {
+              op_param.row_count_ = update_row_cnt_;
+            }
           }
           else
           {
             op_param.row_count_ = random_num % (MAX_INVALID_ROW_COUNT - 1) + 1;
-          }          
+          }
         }
         //go through
 
@@ -1096,13 +1187,13 @@ namespace oceanbase
 
       case GEN_SEQ:
       case GEN_COMBO_RANDOM:
-        TBSYS_LOG(WARN, "not implement type(%s) for generating row count", 
+        TBSYS_LOG(WARN, "not implement type(%s) for generating row count",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_row_count_]);
         ret = OB_ERROR;
         break;
 
       default:
-        TBSYS_LOG(WARN, "uknown generation type=%s", 
+        TBSYS_LOG(WARN, "uknown generation type=%s",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_row_count_]);
         ret = OB_ERROR;
         break;
@@ -1111,7 +1202,7 @@ namespace oceanbase
       return ret;
     }
 
-    void ObSyscheckerRule::set_row_op_type(const ObOpParam& op_param, 
+    void ObSyscheckerRule::set_row_op_type(const ObOpParam& op_param,
                                            ObOpRowParam& row_param,
                                            const uint64_t random_num)
     {
@@ -1133,7 +1224,7 @@ namespace oceanbase
       }
     }
 
-    void ObSyscheckerRule::set_cell_op_type(const ObOpRowParam& row_param, 
+    void ObSyscheckerRule::set_cell_op_type(const ObOpRowParam& row_param,
                                             ObOpCellParam& cell_param,
                                             const uint64_t random_num)
     {
@@ -1147,37 +1238,37 @@ namespace oceanbase
       }
     }
 
-    int ObSyscheckerRule::encode_row_key(const ObOpParam& op_param, 
+    int ObSyscheckerRule::encode_row_key(const ObOpParam& op_param,
                                          ObOpRowParam& row_param,
-                                         const int64_t prefix, 
+                                         const int64_t prefix,
                                          const int64_t suffix)
     {
       int ret     = OB_SUCCESS;
-      int64_t pos = 0;
 
       if (op_param.is_wide_table_)
       {
-        row_param.rowkey_len_ = MAX_SYSCHECKER_ROWKEY_LEN;
-        ret = encode_i64(row_param.rowkey_, row_param.rowkey_len_, 
-                         pos, prefix);
-        if (OB_SUCCESS == ret)
+        row_param.rowkey_len_ = MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT;
+        row_param.rowkey_[0].set_int(prefix);
+        if (suffix < 0)
         {
-          ret = encode_i64(row_param.rowkey_, row_param.rowkey_len_, 
-                           pos, suffix);
-        }              
+          row_param.rowkey_[1].set_max_value();
+        }
+        else
+        {
+          row_param.rowkey_[1].set_int(suffix);
+        }
       }
       else
       {
-        row_param.rowkey_len_ = ROWKEY_SUFFIX_SIZE;
-        ret = encode_i64(row_param.rowkey_, row_param.rowkey_len_, 
-                         pos, suffix);              
-      } 
+        row_param.rowkey_len_ = MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT / 2;
+        row_param.rowkey_[0].set_int(suffix);
+      }
 
       return ret;
     }
 
-    int ObSyscheckerRule::set_row_key(const ObOpParam& op_param, 
-                                      ObOpRowParam& row_param, 
+    int ObSyscheckerRule::set_row_key(const ObOpParam& op_param,
+                                      ObOpRowParam& row_param,
                                       const uint64_t random_num,
                                       int64_t& prefix,
                                       int64_t& suffix)
@@ -1189,24 +1280,45 @@ namespace oceanbase
       switch (op_param.param_gen_.gen_row_key_)
       {
       case GEN_RANDOM:
+      case GEN_FROM_CONFIG:
         //skip key with prefix 0
         prefix = random_num % (cur_max_prefix_ - 1) + 1;
         suffix = random_num % cur_max_suffix_;
-        if (OP_SCAN == op_param.op_type_)
+        if (OP_SCAN == op_param.op_type_ || OP_SQL_SCAN == op_param.op_type_)
         {
           if (op_param.is_wide_table_ && prefix_back > 0)
           {
-            prefix = prefix_back + random_num % MAX_SCAN_ROW_COUNT;
+            if (!perf_test_)
+            {
+              prefix = prefix_back + random_num % MAX_SCAN_ROW_COUNT;
+              suffix = suffix_back;
+            }
+            else
+            {
+              prefix = prefix_back + scan_row_cnt_ - 1;
+              suffix = -1;  //for performance test, the end key with FF suffix
+            }
+          }
+          else if (op_param.is_wide_table_ && prefix_back == 0 && perf_test_)
+          {
+            suffix = 0; //for performance test, the start key with 00 suffix
           }
           else if (!op_param.is_wide_table_ && suffix_back > 0)
           {
-            suffix = suffix_back + random_num % MAX_SCAN_ROW_COUNT;
+            if (!perf_test_)
+            {
+              suffix = suffix_back + random_num % MAX_SCAN_ROW_COUNT;
+            }
+            else
+            {
+              suffix = suffix_back + scan_row_cnt_;
+            }
           }
         }
-        else if (OP_GET == op_param.op_type_)
+        else if (OP_GET == op_param.op_type_ || OP_SQL_GET == op_param.op_type_)
         {
           //avoid adjacent rowkey is the same
-          if (op_param.is_wide_table_ && prefix_back == prefix 
+          if (op_param.is_wide_table_ && prefix_back == prefix
               && suffix_back == suffix)
           {
             suffix = suffix_back + 1;
@@ -1229,7 +1341,7 @@ namespace oceanbase
           {
             prefix = prefix_back + random_num % MAX_SCAN_ROW_COUNT;
           }
-          else 
+          else
           {
             prefix = prefix_back + 1;
           }
@@ -1240,12 +1352,12 @@ namespace oceanbase
           {
             suffix = suffix_back + random_num % MAX_SCAN_ROW_COUNT;
           }
-          else 
+          else
           {
             suffix = suffix_back + 1;
           }
         }
-        ret = encode_row_key(op_param, row_param, prefix, suffix); 
+        ret = encode_row_key(op_param, row_param, prefix, suffix);
         break;
 
       case GEN_NEW_KEY:
@@ -1272,13 +1384,13 @@ namespace oceanbase
         break;
 
       case GEN_COMBO_RANDOM:
-        TBSYS_LOG(WARN, "not implement type(%s) for generating row key", 
+        TBSYS_LOG(WARN, "not implement type(%s) for generating row key",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_row_key_]);
         ret = OB_ERROR;
         break;
 
       default:
-        TBSYS_LOG(WARN, "uknown generation type=%s", 
+        TBSYS_LOG(WARN, "uknown generation type=%s",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_row_key_]);
         ret = OB_ERROR;
         break;
@@ -1288,7 +1400,7 @@ namespace oceanbase
     }
 
     int ObSyscheckerRule::set_cell_count_per_row(const ObOpParam& op_param,
-                                                 ObOpRowParam& row_param, 
+                                                 ObOpRowParam& row_param,
                                                  const uint64_t random_num)
     {
       int ret             = OB_SUCCESS;
@@ -1322,7 +1434,7 @@ namespace oceanbase
           if (wt_size <= 0)
           {
             TBSYS_LOG(WARN, "invalid wide table column count, wt_clumn_count=%ld, "
-                            "gen_cell_count_type=%s", 
+                            "gen_cell_count_type=%s",
                       wt_size, OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
             ret = OB_ERROR;
             break;
@@ -1342,7 +1454,7 @@ namespace oceanbase
           if (jt_size <= 0)
           {
             TBSYS_LOG(WARN, "invalid join table column count, jt_clumn_count=%ld, "
-                            "gen_cell_count_type=%s", 
+                            "gen_cell_count_type=%s",
                       jt_size, OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
             ret = OB_ERROR;
             break;
@@ -1356,7 +1468,7 @@ namespace oceanbase
             cell_count = (random_num % jt_size) * MIN_OP_CELL_COUNT;
           }
         }
-        row_param.cell_count_ = (0 == cell_count) ? MIN_OP_CELL_COUNT : cell_count;
+        row_param.cell_count_ = static_cast<int32_t>((0 == cell_count) ? MIN_OP_CELL_COUNT : cell_count);
         break;
 
       case GEN_VALID_WRITE:
@@ -1370,7 +1482,7 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "invalid wide table writable column count, "
                               "wt_writable_clumn_count=%ld, "
-                              "gen_cell_count_type=%s", 
+                              "gen_cell_count_type=%s",
                         wwt_size, OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
               ret = OB_ERROR;
               break;
@@ -1391,7 +1503,7 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "invalid join table writable column count, "
                               "jt_writable_clumn_count=%ld, "
-                              "gen_cell_count_type=%s", 
+                              "gen_cell_count_type=%s",
                         jwt_size, OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
               ret = OB_ERROR;
               break;
@@ -1404,8 +1516,8 @@ namespace oceanbase
             {
               cell_count = (random_num % jwt_size) * MIN_OP_CELL_COUNT;
             }
-          } 
-          row_param.cell_count_ = (0 == cell_count) ? MIN_OP_CELL_COUNT : cell_count;
+          }
+          row_param.cell_count_ = static_cast<int32_t>((0 == cell_count) ? MIN_OP_CELL_COUNT : cell_count);
         }
         else{
           TBSYS_LOG(WARN, "read operation specify GEN_VALID_WRITE");
@@ -1424,7 +1536,7 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "invalid wide table unwritable column count, "
                               "wt_unwritable_clumn_count=%ld, "
-                              "gen_cell_count_type=%s", 
+                              "gen_cell_count_type=%s",
                         wut_size, OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
               ret = OB_ERROR;
               break;
@@ -1433,7 +1545,7 @@ namespace oceanbase
             {
               cell_count = wut_size * MIN_OP_CELL_COUNT;
             }
-            else 
+            else
             {
               cell_count = (random_num % wut_size) * MIN_OP_CELL_COUNT;
             }
@@ -1445,7 +1557,7 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "invalid join table unwritable column count, "
                               "jt_unwritable_clumn_count=%ld, "
-                              "gen_cell_count_type=%s", 
+                              "gen_cell_count_type=%s",
                         jut_size, OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
               ret = OB_ERROR;
               break;
@@ -1454,12 +1566,12 @@ namespace oceanbase
             {
               cell_count = jut_size * MIN_OP_CELL_COUNT;
             }
-            else 
+            else
             {
               cell_count = (random_num % jut_size) * MIN_OP_CELL_COUNT;
             }
-          } 
-          row_param.cell_count_ = (0 == cell_count) ? MIN_OP_CELL_COUNT : cell_count;
+          }
+          row_param.cell_count_ = static_cast<int32_t>((0 == cell_count) ? MIN_OP_CELL_COUNT : cell_count);
         }
         else{
           TBSYS_LOG(WARN, "read operation specify GEN_INVALID_WRITE");
@@ -1478,7 +1590,7 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "invalid wide table addable column count, "
                               "wat_addable_clumn_count=%ld, "
-                              "gen_cell_count_type=%s", 
+                              "gen_cell_count_type=%s",
                         wat_size, OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
               ret = OB_ERROR;
               break;
@@ -1499,7 +1611,7 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "invalid join table addable column count, "
                               "jat_addable_clumn_count=%ld, "
-                              "gen_cell_count_type=%s", 
+                              "gen_cell_count_type=%s",
                         jat_size, OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
               ret = OB_ERROR;
               break;
@@ -1512,8 +1624,8 @@ namespace oceanbase
             {
               cell_count = (random_num % jat_size) * MIN_OP_CELL_COUNT;
             }
-          } 
-          row_param.cell_count_ = (0 == cell_count) ? MIN_OP_CELL_COUNT : cell_count;
+          }
+          row_param.cell_count_ = static_cast<int32_t>((0 == cell_count) ? MIN_OP_CELL_COUNT : cell_count);
         }
         else{
           TBSYS_LOG(WARN, "read operation specify GEN_VALID_ADD");
@@ -1523,7 +1635,7 @@ namespace oceanbase
 
       case GEN_SPECIFIED:
         //specified, check if it's valid
-        if (row_param.cell_count_ <= 0 
+        if (row_param.cell_count_ <= 0
             || row_param.cell_count_ % MIN_OP_CELL_COUNT != 0)
         {
           TBSYS_LOG(WARN, "spedified wrong cell count, cell_count=%d",
@@ -1534,13 +1646,14 @@ namespace oceanbase
 
       case GEN_SEQ:
       case GEN_COMBO_RANDOM:
-        TBSYS_LOG(WARN, "not implement type(%s) for generating row cell count", 
+      case GEN_FROM_CONFIG:
+        TBSYS_LOG(WARN, "not implement type(%s) for generating row cell count",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
         ret = OB_ERROR;
         break;
 
       default:
-        TBSYS_LOG(WARN, "uknown generation type=%s", 
+        TBSYS_LOG(WARN, "uknown generation type=%s",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_count_]);
         ret = OB_ERROR;
         break;
@@ -1549,7 +1662,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_column_name(const ObColumnPair& column_pair, 
+    int ObSyscheckerRule::set_column_name(const ObColumnPair& column_pair,
                                           ObOpCellParam& org_cell,
                                           ObOpCellParam& aux_cell)
     {
@@ -1563,25 +1676,28 @@ namespace oceanbase
       }
       else
       {
-        org_cell.column_name_ = 
+        org_cell.column_name_ =
           syschecker_schema_.get_column_name(*column_pair.org_);
+        org_cell.column_id_ = column_pair.org_->get_id();
         if (NULL != column_pair.aux_)
         {
-          aux_cell.column_name_ = 
+          aux_cell.column_name_ =
             syschecker_schema_.get_column_name(*column_pair.aux_);
+          aux_cell.column_id_ = column_pair.aux_->get_id();
         }
         else
         {
           //no auxiliary column, set original column twice
-          aux_cell.column_name_ = 
+          aux_cell.column_name_ =
             syschecker_schema_.get_column_name(*column_pair.org_);
+          aux_cell.column_id_ = column_pair.org_->get_id();
         }
       }
 
       return ret;
     }
 
-    int ObSyscheckerRule::set_cell_type(const ObColumnPair& column_pair, 
+    int ObSyscheckerRule::set_cell_type(const ObColumnPair& column_pair,
                                         ObOpCellParam& org_cell,
                                         ObOpCellParam& aux_cell)
     {
@@ -1596,7 +1712,7 @@ namespace oceanbase
       else
       {
         org_cell.cell_type_ = column_pair.org_->get_type();
-        
+
         if (NULL != column_pair.aux_)
         {
           aux_cell.cell_type_ = column_pair.aux_->get_type();
@@ -1611,7 +1727,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_addable_cell_value(ObOpCellParam& org_cell, 
+    int ObSyscheckerRule::set_addable_cell_value(ObOpCellParam& org_cell,
                                                  ObOpCellParam& aux_cell)
     {
       int ret = OB_SUCCESS;
@@ -1624,16 +1740,16 @@ namespace oceanbase
         break;
       case ObFloatType:
         /**
-         * for float type, the auxiliary column store the same value 
-         * with original column 
+         * for float type, the auxiliary column store the same value
+         * with original column
          */
         org_cell.value_.float_val_ = 1.0;
         aux_cell.value_.float_val_ = 1.0;
         break;
       case ObDoubleType:
         /**
-         * for double type, the auxiliary column store the same value 
-         * with original column 
+         * for double type, the auxiliary column store the same value
+         * with original column
          */
         org_cell.value_.double_val_ = 1.0;
         aux_cell.value_.double_val_ = 1.0;
@@ -1648,7 +1764,7 @@ namespace oceanbase
         break;
       case ObVarcharType:
         /**
-         * try to add varchar, must fail, and it can't affect the data 
+         * try to add varchar, must fail, and it can't affect the data
          * consistence, we just add some illegal value
          */
         org_cell.value_.varchar_val_ = (char*)1;
@@ -1656,16 +1772,16 @@ namespace oceanbase
         break;
       case ObCreateTimeType:
         /**
-         * try to add ObCreateTimeType, must fail, and it can't affect 
-         * the data consistence, we just add some illegal value 
+         * try to add ObCreateTimeType, must fail, and it can't affect
+         * the data consistence, we just add some illegal value
          */
         org_cell.value_.createtime_val_ = 1;
         aux_cell.value_.int_val_ = -1;
         break;
       case ObModifyTimeType:
         /**
-         * try to add ObModifyTimeType, must fail, and it can't affect 
-         * the data consistence, we just add some illegal value 
+         * try to add ObModifyTimeType, must fail, and it can't affect
+         * the data consistence, we just add some illegal value
          */
         org_cell.value_.modifytime_val_ = 1;
         aux_cell.value_.int_val_ = -1;
@@ -1675,12 +1791,12 @@ namespace oceanbase
       case ObMaxType:
       case ObMinType:
       case ObNullType:
-        TBSYS_LOG(WARN, "wrong addable object type %s", 
+        TBSYS_LOG(WARN, "wrong addable object type %s",
                   OBJ_TYPE_STR[org_cell.cell_type_]);
         ret = OB_ERROR;
         break;
       default:
-        TBSYS_LOG(WARN, "unknown object type %s", 
+        TBSYS_LOG(WARN, "unknown object type %s",
                   OBJ_TYPE_STR[org_cell.cell_type_]);
         ret = OB_ERROR;
         break;
@@ -1689,13 +1805,13 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_cell_varchar(const ObColumnPair& column_pair, 
-                                           ObOpCellParam& org_cell, 
+    int ObSyscheckerRule::set_cell_varchar(const ObColumnPair& column_pair,
+                                           ObOpCellParam& org_cell,
                                            ObOpCellParam& aux_cell,
                                            const uint64_t random_num)
     {
       int ret               = OB_SUCCESS;
-      int64_t max_len       = 0; 
+      int64_t max_len       = 0;
       int64_t length        = 0;
       int64_t varchar_hash  = 0;
       struct MurmurHash2 hash;
@@ -1719,10 +1835,10 @@ namespace oceanbase
           max_len = column_pair.org_->get_size();
           length = random_num % max_len;
           length = (length < MIN_TEST_VARCHAR_LEN) ? MIN_TEST_VARCHAR_LEN : length;
-          org_cell.varchar_len_ = length;
-          org_cell.value_.varchar_val_ = 
+          org_cell.varchar_len_ = static_cast<int32_t>(length);
+          org_cell.value_.varchar_val_ =
             random_block_ + random_num % (random_block_size_ - max_len);
-          varchar_hash = hash(org_cell.value_.varchar_val_, length);
+          varchar_hash = hash(org_cell.value_.varchar_val_, static_cast<int32_t>(length));
           aux_cell.value_.int_val_ = 0 - varchar_hash;
         }
       }
@@ -1730,8 +1846,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_new_cell_value(const ObColumnPair& column_pair, 
-                                             ObOpCellParam& org_cell, 
+    int ObSyscheckerRule::set_new_cell_value(const ObColumnPair& column_pair,
+                                             ObOpCellParam& org_cell,
                                              ObOpCellParam& aux_cell,
                                              const uint64_t random_num)
     {
@@ -1754,19 +1870,19 @@ namespace oceanbase
         break;
       case ObFloatType:
         /**
-         * for float type, the auxiliary column store the same value 
-         * with original column 
+         * for float type, the auxiliary column store the same value
+         * with original column
          */
         org_cell.value_.float_val_ = static_cast<float>(random_num);
         aux_cell.value_.float_val_ = static_cast<float>(random_num);
         break;
       case ObDoubleType:
         /**
-         * for double type, the auxiliary column store the same value 
-         * with original column 
+         * for double type, the auxiliary column store the same value
+         * with original column
          */
-        org_cell.value_.double_val_ = random_num;
-        aux_cell.value_.double_val_ = random_num;
+        org_cell.value_.double_val_ = (double)random_num;
+        aux_cell.value_.double_val_ = (double)random_num;
         break;
       case ObDateTimeType:
         org_cell.value_.time_val_ = random_num;
@@ -1793,12 +1909,12 @@ namespace oceanbase
       case ObExtendType:
       case ObMaxType:
       case ObMinType:
-        TBSYS_LOG(WARN, "wrong update or insert object type %s", 
+        TBSYS_LOG(WARN, "wrong update or insert object type %s",
                   OBJ_TYPE_STR[org_cell.cell_type_]);
         ret = OB_ERROR;
         break;
       default:
-        TBSYS_LOG(WARN, "unknown object type %s", 
+        TBSYS_LOG(WARN, "unknown object type %s",
                   OBJ_TYPE_STR[org_cell.cell_type_]);
         ret = OB_ERROR;
         break;
@@ -1808,8 +1924,8 @@ namespace oceanbase
     }
 
     int ObSyscheckerRule::set_cell_value(const ObColumnPair& column_pair,
-                                         ObOpCellParam& org_cell, 
-                                         ObOpCellParam& aux_cell, 
+                                         ObOpCellParam& org_cell,
+                                         ObOpCellParam& aux_cell,
                                          const uint64_t random_num)
     {
       int ret = OB_SUCCESS;
@@ -1821,7 +1937,7 @@ namespace oceanbase
         break;
       case OP_UPDATE:
       case OP_INSERT:
-        ret = set_new_cell_value(column_pair, org_cell, 
+        ret = set_new_cell_value(column_pair, org_cell,
                                  aux_cell, random_num);
         break;
       default:
@@ -1831,8 +1947,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_random_wt_cell(ObOpCellParam& org_cell, 
-                                             ObOpCellParam& aux_cell, 
+    int ObSyscheckerRule::set_random_wt_cell(ObOpCellParam& org_cell,
+                                             ObOpCellParam& aux_cell,
                                              const uint64_t random_num,
                                              const bool is_read,
                                              const int64_t column_idx)
@@ -1868,7 +1984,7 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(WARN, "can't get column pair from wide table, "
-                          "wt_size=%ld, index=%ld, column_pair=%p", 
+                          "wt_size=%ld, index=%ld, column_pair=%p",
                     wt_size, index, column_pair);
           ret = OB_ERROR;
         }
@@ -1886,8 +2002,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_random_jt_cell(ObOpCellParam& org_cell, 
-                                             ObOpCellParam& aux_cell, 
+    int ObSyscheckerRule::set_random_jt_cell(ObOpCellParam& org_cell,
+                                             ObOpCellParam& aux_cell,
                                              const uint64_t random_num,
                                              const bool is_read,
                                              const int64_t column_idx)
@@ -1923,7 +2039,7 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(WARN, "can't get column pair from join table, "
-                          "jt_size=%ld, index=%ld, column_pair=%p", 
+                          "jt_size=%ld, index=%ld, column_pair=%p",
                     jt_size, index, column_pair);
           ret = OB_ERROR;
         }
@@ -1941,8 +2057,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_valid_wwt_cell(ObOpCellParam& org_cell, 
-                                             ObOpCellParam& aux_cell, 
+    int ObSyscheckerRule::set_valid_wwt_cell(ObOpCellParam& org_cell,
+                                             ObOpCellParam& aux_cell,
                                              const uint64_t random_num,
                                              const int64_t column_idx)
     {
@@ -1955,7 +2071,7 @@ namespace oceanbase
       if (wwt_size <= 0)
       {
         TBSYS_LOG(WARN, "invalid wide table writable column count, "
-                        "wwt_clumn_count=%ld, gen_cell_type=GEN_VALID_WRITE", 
+                        "wwt_clumn_count=%ld, gen_cell_type=GEN_VALID_WRITE",
                   wwt_size);
         ret = OB_ERROR;
       }
@@ -1978,7 +2094,7 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(WARN, "can't get column pair from wide table writable column, "
-                          "wwt_size=%ld, index=%ld, column_pair=%p", 
+                          "wwt_size=%ld, index=%ld, column_pair=%p",
                     wwt_size, index, column_pair);
           ret = OB_ERROR;
         }
@@ -1996,8 +2112,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_valid_jwt_cell(ObOpCellParam& org_cell, 
-                                             ObOpCellParam& aux_cell, 
+    int ObSyscheckerRule::set_valid_jwt_cell(ObOpCellParam& org_cell,
+                                             ObOpCellParam& aux_cell,
                                              const uint64_t random_num,
                                              const int64_t column_idx)
     {
@@ -2010,7 +2126,7 @@ namespace oceanbase
       if (jwt_size <= 0)
       {
         TBSYS_LOG(WARN, "invalid join table writable column count, "
-                        "jwt_clumn_count=%ld, gen_cell_type=GEN_VALID_WRITE", 
+                        "jwt_clumn_count=%ld, gen_cell_type=GEN_VALID_WRITE",
                   jwt_size);
         ret = OB_ERROR;
       }
@@ -2033,7 +2149,7 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(WARN, "can't get column pair from join table writable column, "
-                          "jwt_size=%ld, index=%ld, column_pair=%p", 
+                          "jwt_size=%ld, index=%ld, column_pair=%p",
                     jwt_size, index, column_pair);
           ret = OB_ERROR;
         }
@@ -2051,8 +2167,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_invalid_wut_cell(ObOpCellParam& org_cell, 
-                                               ObOpCellParam& aux_cell, 
+    int ObSyscheckerRule::set_invalid_wut_cell(ObOpCellParam& org_cell,
+                                               ObOpCellParam& aux_cell,
                                                const uint64_t random_num,
                                                const int64_t column_idx)
     {
@@ -2065,7 +2181,7 @@ namespace oceanbase
       if (wut_size <= 0)
       {
         TBSYS_LOG(WARN, "invalid wide table unwritable column count, "
-                        "wut_clumn_count=%ld, gen_cell_type=GEN_INVALID_WRITE", 
+                        "wut_clumn_count=%ld, gen_cell_type=GEN_INVALID_WRITE",
                   wut_size);
         ret = OB_ERROR;
       }
@@ -2088,7 +2204,7 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(WARN, "can't get column pair from wide table unwritable "
-                          "wut_size=%ld, index=%ld, column_pair=%p", 
+                          "wut_size=%ld, index=%ld, column_pair=%p",
                     wut_size, index, column_pair);
           ret = OB_ERROR;
         }
@@ -2106,8 +2222,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_invalid_jut_cell(ObOpCellParam& org_cell, 
-                                               ObOpCellParam& aux_cell, 
+    int ObSyscheckerRule::set_invalid_jut_cell(ObOpCellParam& org_cell,
+                                               ObOpCellParam& aux_cell,
                                                const uint64_t random_num,
                                                const int64_t column_idx)
     {
@@ -2120,7 +2236,7 @@ namespace oceanbase
       if (jut_size <= 0)
       {
         TBSYS_LOG(WARN, "invalid join table uwritable column count, "
-                        "jut_clumn_count=%ld, gen_cell_type=GEN_INVALID_WRITE", 
+                        "jut_clumn_count=%ld, gen_cell_type=GEN_INVALID_WRITE",
                   jut_size);
         ret = OB_ERROR;
       }
@@ -2143,7 +2259,7 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(WARN, "can't get column pair from join table unwritable column, "
-                          "jut_size=%ld, index=%ld, column_pair=%p", 
+                          "jut_size=%ld, index=%ld, column_pair=%p",
                     jut_size, index, column_pair);
           ret = OB_ERROR;
         }
@@ -2161,8 +2277,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_valid_wat_cell(ObOpCellParam& org_cell, 
-                                             ObOpCellParam& aux_cell, 
+    int ObSyscheckerRule::set_valid_wat_cell(ObOpCellParam& org_cell,
+                                             ObOpCellParam& aux_cell,
                                              const uint64_t random_num,
                                              const int64_t column_idx)
     {
@@ -2175,7 +2291,7 @@ namespace oceanbase
       if (wat_size <= 0)
       {
         TBSYS_LOG(WARN, "invalid wide table addable column count, "
-                        "wat_clumn_count=%ld, gen_cell_type=GEN_VALID_ADD", 
+                        "wat_clumn_count=%ld, gen_cell_type=GEN_VALID_ADD",
                   wat_size);
         ret = OB_ERROR;
       }
@@ -2198,7 +2314,7 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(WARN, "can't get column pair from wide table addable column, "
-                          "wat_size=%ld, index=%ld, column_pair=%p", 
+                          "wat_size=%ld, index=%ld, column_pair=%p",
                     wat_size, index, column_pair);
           ret = OB_ERROR;
         }
@@ -2216,8 +2332,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_valid_jat_cell(ObOpCellParam& org_cell, 
-                                             ObOpCellParam& aux_cell, 
+    int ObSyscheckerRule::set_valid_jat_cell(ObOpCellParam& org_cell,
+                                             ObOpCellParam& aux_cell,
                                              const uint64_t random_num,
                                              const int64_t column_idx)
     {
@@ -2230,7 +2346,7 @@ namespace oceanbase
       if (jat_size <= 0)
       {
         TBSYS_LOG(WARN, "invalid join table addable column count, "
-                        "jat_clumn_count=%ld, gen_cell_type=GEN_VALID_ADD", 
+                        "jat_clumn_count=%ld, gen_cell_type=GEN_VALID_ADD",
                   jat_size);
         ret = OB_ERROR;
       }
@@ -2253,7 +2369,7 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(WARN, "can't get column pair from join table writable column, "
-                          "jat_size=%ld, index=%ld, column_pair=%p", 
+                          "jat_size=%ld, index=%ld, column_pair=%p",
                     jat_size, index, column_pair);
           ret = OB_ERROR;
         }
@@ -2271,7 +2387,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::check_addable_cell_value(ObOpCellParam& org_cell, 
+    int ObSyscheckerRule::check_addable_cell_value(ObOpCellParam& org_cell,
                                                    ObOpCellParam& aux_cell)
     {
       int ret = OB_SUCCESS;
@@ -2331,12 +2447,12 @@ namespace oceanbase
       case ObMaxType:
       case ObMinType:
       case ObNullType:
-        TBSYS_LOG(WARN, "wrong addable object type %s", 
+        TBSYS_LOG(WARN, "wrong addable object type %s",
                   OBJ_TYPE_STR[org_cell.cell_type_]);
         ret = OB_ERROR;
         break;
       default:
-        TBSYS_LOG(WARN, "unknown object type %s", 
+        TBSYS_LOG(WARN, "unknown object type %s",
                   OBJ_TYPE_STR[org_cell.cell_type_]);
         ret = OB_ERROR;
         break;
@@ -2345,7 +2461,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::check_new_cell_value(ObOpCellParam& org_cell, 
+    int ObSyscheckerRule::check_new_cell_value(ObOpCellParam& org_cell,
                                                ObOpCellParam& aux_cell)
     {
       int ret               = OB_SUCCESS;
@@ -2413,12 +2529,12 @@ namespace oceanbase
       case ObExtendType:
       case ObMaxType:
       case ObMinType:
-        TBSYS_LOG(WARN, "wrong update object type %s", 
+        TBSYS_LOG(WARN, "wrong update object type %s",
                   OBJ_TYPE_STR[org_cell.cell_type_]);
         ret = OB_ERROR;
         break;
       default:
-        TBSYS_LOG(WARN, "unknown object type %s", 
+        TBSYS_LOG(WARN, "unknown object type %s",
                   OBJ_TYPE_STR[org_cell.cell_type_]);
         ret = OB_ERROR;
         break;
@@ -2427,7 +2543,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::check_cell_value(ObOpCellParam& org_cell, 
+    int ObSyscheckerRule::check_cell_value(ObOpCellParam& org_cell,
                                            ObOpCellParam& aux_cell)
     {
       int ret = OB_SUCCESS;
@@ -2445,20 +2561,21 @@ namespace oceanbase
         break;
       }
 
-      return ret;    
+      return ret;
     }
 
-    int ObSyscheckerRule::set_cell_pair(const ObOpParam& op_param, 
-                                        const ObOpRowParam& row_param, 
-                                        ObOpCellParam& org_cell, 
-                                        ObOpCellParam& aux_cell, 
-                                        const uint64_t random_num, 
+    int ObSyscheckerRule::set_cell_pair(const ObOpParam& op_param,
+                                        const ObOpRowParam& row_param,
+                                        ObOpCellParam& org_cell,
+                                        ObOpCellParam& aux_cell,
+                                        const uint64_t random_num,
                                         const int64_t column_idx)
     {
       int ret = OB_SUCCESS;
+      UNUSED(row_param);
 
       //change GEN_VALID_WRITE to GEN_VALID_ADD for add operation
-      if (OP_ADD == org_cell.op_type_ && OP_ADD == aux_cell.op_type_ 
+      if (OP_ADD == org_cell.op_type_ && OP_ADD == aux_cell.op_type_
           && GEN_VALID_WRITE == op_param.param_gen_.gen_cell_)
       {
         org_cell.gen_cell_ = GEN_VALID_ADD;
@@ -2467,7 +2584,7 @@ namespace oceanbase
       else
       {
         org_cell.gen_cell_ = op_param.param_gen_.gen_cell_;
-        aux_cell.gen_cell_ = op_param.param_gen_.gen_cell_;        
+        aux_cell.gen_cell_ = op_param.param_gen_.gen_cell_;
       }
 
       switch (org_cell.gen_cell_)
@@ -2475,12 +2592,12 @@ namespace oceanbase
       case GEN_RANDOM:
         if (op_param.is_wide_table_)
         {
-          ret = set_random_wt_cell(org_cell, aux_cell, 
+          ret = set_random_wt_cell(org_cell, aux_cell,
                                    random_num, op_param.is_read_, column_idx);
         }
         else
         {
-          ret = set_random_jt_cell(org_cell, aux_cell, 
+          ret = set_random_jt_cell(org_cell, aux_cell,
                                    random_num, op_param.is_read_, column_idx);
         }
         break;
@@ -2496,7 +2613,7 @@ namespace oceanbase
           else
           {
             ret = set_valid_jwt_cell(org_cell, aux_cell, random_num, column_idx);
-          } 
+          }
         }
         else{
           TBSYS_LOG(WARN, "read operation specify GEN_VALID_WRITE");
@@ -2515,7 +2632,7 @@ namespace oceanbase
           else
           {
             ret = set_invalid_jut_cell(org_cell, aux_cell, random_num, column_idx);
-          } 
+          }
         }
         else{
           TBSYS_LOG(WARN, "read operation specify GEN_INVALID_WRITE");
@@ -2534,7 +2651,7 @@ namespace oceanbase
           else
           {
             ret = set_valid_jat_cell(org_cell, aux_cell, random_num, column_idx);
-          } 
+          }
         }
         else{
           TBSYS_LOG(WARN, "not add operation specify GEN_VALID_ADD");
@@ -2545,16 +2662,16 @@ namespace oceanbase
       case GEN_SPECIFIED:
         //nothing to do, we will check the vlaue of cell later
         break;
-        
+
       case GEN_SEQ:
       case GEN_COMBO_RANDOM:
-        TBSYS_LOG(WARN, "not implement type(%s) for generating row cell", 
+        TBSYS_LOG(WARN, "not implement type(%s) for generating row cell",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_]);
         ret = OB_ERROR;
         break;
 
       default:
-        TBSYS_LOG(WARN, "uknown generation type=%s", 
+        TBSYS_LOG(WARN, "uknown generation type=%s",
                   OP_GEN_MODE_STR[op_param.param_gen_.gen_cell_]);
         ret = OB_ERROR;
         break;
@@ -2573,9 +2690,9 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerRule::set_cells_info(const ObOpParam& op_param, 
+    int ObSyscheckerRule::set_cells_info(const ObOpParam& op_param,
                                          ObOpRowParam& row_param,
-                                         const int64_t prefix,  
+                                         const int64_t prefix,
                                          const uint64_t random_num)
     {
       int ret                 = OB_SUCCESS;
@@ -2584,8 +2701,8 @@ namespace oceanbase
       uint64_t prime_index    = random_num % PRIME_NUM_COUNT;
       uint64_t new_random     = random_num * PRIME_NUM[prime_index];
 
-      for (int64_t j = 0; 
-           j < row_param.cell_count_ && OB_SUCCESS == ret; 
+      for (int64_t j = 0;
+           j < row_param.cell_count_ && OB_SUCCESS == ret;
            j += MIN_OP_CELL_COUNT)
       {
         prime_index = (new_random + j) % PRIME_NUM_COUNT;
@@ -2596,7 +2713,7 @@ namespace oceanbase
         set_cell_op_type(row_param, *aux_cell, new_random);
         org_cell->key_prefix_ = prefix;
         aux_cell->key_prefix_ = prefix;
-        ret = set_cell_pair(op_param, row_param, *org_cell, 
+        ret = set_cell_pair(op_param, row_param, *org_cell,
                             *aux_cell, new_random, j / 2);
         if (OB_SUCCESS != ret)
         {
@@ -2621,7 +2738,7 @@ namespace oceanbase
       ret = set_row_count(op_param, random_num);
       if (OB_SUCCESS == ret)
       {
-        for (int64_t i = 0; 
+        for (int64_t i = 0;
              i < op_param.row_count_ && OB_SUCCESS == ret; ++i)
         {
           prime_index = (new_random + i) % PRIME_NUM_COUNT;
@@ -2629,7 +2746,7 @@ namespace oceanbase
           row_param = &op_param.row_[i];
           set_row_op_type(op_param, *row_param, new_random);
 
-          ret = set_row_key(op_param, *row_param, new_random, 
+          ret = set_row_key(op_param, *row_param, new_random,
                             prefix, suffix);
           if (OB_SUCCESS == ret)
           {
@@ -2727,7 +2844,7 @@ namespace oceanbase
         {
           ret = set_table_name(read_param, random_num);
         }
-  
+
         if (OB_SUCCESS == ret)
         {
           ret = set_rows_info(read_param, random_num);
@@ -2757,7 +2874,7 @@ namespace oceanbase
       return atomic_add(&cur_max_suffix_, suffix);
     }
 
-    void hex_dump_rowkey(const void* data, const int32_t size, 
+    void hex_dump_rowkey(const void* data, const int32_t size,
                          const bool char_type)
     {
       /* dumps size bytes of *data to stdout. Looks like:
@@ -2765,7 +2882,7 @@ namespace oceanbase
        * 30 FF 00 00 00 00 39 00 unknown 0.....9.
        * (in a single line of course)
        */
-    
+
       unsigned const char *p = (unsigned char*)data;
       unsigned char c = 0;
       int n = 0;
@@ -2773,43 +2890,43 @@ namespace oceanbase
       char addrstr[10] = {0};
       char hexstr[ 16*3 + 5] = {0};
       char charstr[16*1 + 5] = {0};
-    
-      for(n = 1; n <= size; n++) 
+
+      for(n = 1; n <= size; n++)
       {
-        if (n%16 == 1) 
+        if (n%16 == 1)
         {
           /* store address for this line */
           snprintf(addrstr, sizeof(addrstr), "%.4x",
               (int)((unsigned long)p-(unsigned long)data) );
         }
-    
+
         c = *p;
-        if (isprint(c) == 0) 
+        if (isprint(c) == 0)
         {
           c = '.';
         }
-    
+
         /* store hex str (for left side) */
         snprintf(bytestr, sizeof(bytestr), "%02X ", *p);
         strncat(hexstr, bytestr, sizeof(hexstr)-strlen(hexstr)-1);
-    
+
         /* store char str (for right side) */
         snprintf(bytestr, sizeof(bytestr), "%c", c);
         strncat(charstr, bytestr, sizeof(charstr)-strlen(charstr)-1);
-    
+
         if (n % 16 == 0)
-        { 
+        {
           /* line completed */
-          if (char_type) 
-            fprintf(stderr, "[%4.4s]   %-50.50s  %s\n", 
+          if (char_type)
+            fprintf(stderr, "[%4.4s]   %-50.50s  %s\n",
                 addrstr, hexstr, charstr);
-          else 
-            fprintf(stderr, "[%4.4s]   %-50.50s\n", 
+          else
+            fprintf(stderr, "[%4.4s]   %-50.50s\n",
                 addrstr, hexstr);
           hexstr[0] = 0;
           charstr[0] = 0;
-        } 
-        else if(n % 8 == 0) 
+        }
+        else if(n % 8 == 0)
         {
           /* half line: add whitespaces */
           strncat(hexstr, "  ", sizeof(hexstr)-strlen(hexstr)-1);
@@ -2817,15 +2934,15 @@ namespace oceanbase
         }
         p++; /* next byte */
       }
-    
-      if (strlen(hexstr) > 0) 
+
+      if (strlen(hexstr) > 0)
       {
         /* print rest of buffer if not empty */
-        if (char_type) 
-          fprintf(stderr, "[%4.4s]   %-50.50s  %s\n", 
+        if (char_type)
+          fprintf(stderr, "[%4.4s]   %-50.50s  %s\n",
               addrstr, hexstr, charstr);
-        else 
-          fprintf(stderr, "[%4.4s]   %-50.50s\n", 
+        else
+          fprintf(stderr, "[%4.4s]   %-50.50s\n",
               addrstr, hexstr);
       }
     }

@@ -4,7 +4,7 @@
 #include <dirent.h>
 #include <iostream>
 #include <pthread.h>
-#include "common/ob_single_log_reader.h"
+#include "common/ob_repeated_log_reader.h"
 #include "common/utility.h"
 #include "common/hash/ob_hashmap.h"
 #include "updateserver/ob_ups_mutator.h"
@@ -73,10 +73,8 @@ int DbLogParser::parse_log(int64_t log_id)
   uint64_t log_seq;
   int64_t data_len;
   char* log_data;
-  const int DATE_STR_LEN = 40;
 
-  ObSingleLogReader reader;
-  char time_buff[DATE_STR_LEN];
+  ObRepeatedLogReader reader;
   long count = 0;
   int64_t start_time = gen_usec();
 
@@ -87,10 +85,10 @@ int DbLogParser::parse_log(int64_t log_id)
   }
 
   if (ret == OB_SUCCESS) {
-    TBSYS_LOG(INFO, "Using LOG:%d", log_id);
+    TBSYS_LOG(INFO, "Using LOG:%ld", log_id);
     ret = reader.open(log_id);
     if (OB_SUCCESS != ret) {
-      TBSYS_LOG(ERROR, "can't open log %d, due to %d", log_id, ret);
+      TBSYS_LOG(ERROR, "can't open log %ld, due to %d", log_id, ret);
     }
   }
 
@@ -109,6 +107,7 @@ int DbLogParser::parse_log(int64_t log_id)
   while (OB_SUCCESS == ret) {
     int64_t pos = 0;
 
+    //TODO: when meet ups switch commitlog, refresh schema 
     if (OB_LOG_UPS_MUTATOR == cmd) {
       ObUpsMutator mut;
 
@@ -119,86 +118,73 @@ int DbLogParser::parse_log(int64_t log_id)
       }
 
       ObMutatorCellInfo* cell = NULL;
-      int cell_idx = 0;
       bool first_rowkey= true;
       int last_ext = 0;
       ObCellInfo last_cell;
 
       while (OB_SUCCESS == (ret = mut.next_cell())) {
         ret = mut.get_cell(&cell);
-
         if (OB_SUCCESS != ret || NULL == cell) {
           TBSYS_LOG(ERROR, "ObUpsMutator get cell failed");
           break;
         }
-        if (0 == cell_idx) {
-          if (mut.is_freeze_memtable()) {
-            //skip
-          } else if (mut.is_drop_memtable()) {
-            //skip
-          }
-          else if (ObExtendType == cell->cell_info.value_.get_type()) {
-            if (ObActionFlag::OP_USE_OB_SEM == cell->cell_info.value_.get_ext()) {
-              //TODO
-            } else if (ObActionFlag::OP_USE_DB_SEM == cell->cell_info.value_.get_ext()) {
-              //TODO
-            } else {
-              TBSYS_LOG(ERROR, "Unrecognized Operation");
-              ret = OB_ERROR;
-              break;
-            }
-          } else {
-//            TBSYS_LOG(ERROR, "OB/DB operation deserialize error, op_type=%d, cell_type=%d", cell->op_type.get_ext(),
-//                      cell->cell_info.value_.get_type());
-//            ret = OB_ERROR;
-//            break;
-          }
+
+        if (mut.is_freeze_memtable()) {
+          //skip
+        } else if (mut.is_drop_memtable()) {
+          //skip
         } else {
-          int64_t ext = cell->cell_info.value_.get_ext();
-          if (ext != ObActionFlag::OP_DEL_ROW) {
-            ext = cell->op_type.get_ext();
-          }
+          if (ObActionFlag::OP_USE_OB_SEM == cell->cell_info.value_.get_ext()) {
+            //skip
+          } else if (ObActionFlag::OP_USE_DB_SEM == cell->cell_info.value_.get_ext()) {
+            //skip
+          } else {
+            int64_t ext = cell->cell_info.value_.get_ext();
 
-          if (ext == ObActionFlag::OP_UPDATE || ext == ObActionFlag::OP_INSERT ||
-              ext == ObActionFlag::OP_DEL_ROW) 
-          {
-            if (first_rowkey || last_cell.row_key_ != cell->cell_info.row_key_ ||
-                last_cell.table_id_ != cell->cell_info.table_id_ ||
-                last_cell.table_name_ != cell->cell_info.table_name_ || ext != last_ext) 
-            {
-              first_rowkey = false;
-              last_cell = cell->cell_info;
-              last_ext = ext;
+            if (ext != ObActionFlag::OP_DEL_ROW)
+              ext = cell->op_type.get_ext();
 
-              time_t time = mut.get_mutate_timestamp() / 1000000;
-              tm tm_time;
-              localtime_r(&time, &tm_time);
-              time_buff[0] = '\0';
-              strftime(time_buff, DATE_STR_LEN, "%Y/%m/%d/%H:%M:%S", &tm_time);
+            /* if this is a a valid operation */
+            if (ext == ObActionFlag::OP_UPDATE || ext == ObActionFlag::OP_INSERT ||
+                ext == ObActionFlag::OP_DEL_ROW) {
+              if (first_rowkey || last_cell.row_key_ != cell->cell_info.row_key_ ||
+                  last_cell.table_id_ != cell->cell_info.table_id_ ||
+                  last_cell.table_name_ != cell->cell_info.table_name_ || ext != last_ext) {
+//                uint64_t timestamp = mut.get_mutate_timestamp();
 
-              if (handler_)
-                handler_->process_rowkey(cell->cell_info, ext, time_buff);
+                count++;
+                first_rowkey = false;
+                last_cell = cell->cell_info;
+                last_ext = static_cast<int32_t>(ext);
 
-              count++;
+                if (handler_) {
+                  if (handler_->need_seq())
+                    handler_->process_rowkey(cell->cell_info, static_cast<int32_t>(ext), gen_usec(), handler_->get_next_seq());
+                  else
+                    handler_->process_rowkey(cell->cell_info, static_cast<int32_t>(ext), gen_usec());
+                }
+              }
+            } else {
+              TBSYS_LOG(ERROR, "OB/DB operation deserialize error, op_type=%ld, cell_type=%d", 
+                        cell->op_type.get_ext(), cell->cell_info.value_.get_type());
+              ret = OB_ERROR;
             }
-          } 
-        }
-        ++cell_idx;
+          }
+        } 
       }
-      //Do some work here!
-      //Example: print_ups_mutator(log_seq, log_data, data_len);
     }
+
     ret = reader.read_log(cmd, log_seq, log_data, data_len);
   }
 
-  TBSYS_LOG(INFO, "LOG_ID:%d, ROWKEY COUNT:%d, TIME ELAPSED(us):%d", 
+  TBSYS_LOG(INFO, "LOG_ID:%ld, ROWKEY COUNT:%ld, TIME ELAPSED(us):%ld", 
             log_id, count, gen_usec() - start_time);
 
   if (handler_)
     handler_->end_process();
 
   if (OB_READ_NOTHING != ret) {
-    TBSYS_LOG(ERROR, "parsing log[:%d:] failed, [retcode = %d]", log_id, ret);
+    TBSYS_LOG(ERROR, "parsing log[:%ld:] failed, [retcode = %d]", log_id, ret);
     report_msg(MSG_ERROR, "parsing log [%d], please revise it", log_id);
   } else {
     ret = OB_SUCCESS;
@@ -213,8 +199,12 @@ void DbLogParser::run(tbsys::CThread *thread, void *args)
 {
   int64_t log_id;
   int ret = OB_SUCCESS;
+  UNUSED(thread);
+  UNUSED(args);
 
+  TBSYS_LOG(INFO, "starting log parser thread");
   while (running_ == true && (ret = monitor_->fetch_log(log_id)) == OB_SUCCESS) {
+    TBSYS_LOG(INFO, "succeed fetch a log, id=%ld", log_id);
     ret = parse_log(log_id);
     if (ret != OB_SUCCESS) {
       //get log file from nas directly
@@ -223,11 +213,11 @@ void DbLogParser::run(tbsys::CThread *thread, void *args)
         //parse it again
         ret = parse_log(log_id);
         if (ret != OB_SUCCESS) {
-          TBSYS_LOG(ERROR, "can't parse log file, id=%d", log_id);
-          report_msg(MSG_ERROR, "can't parse log file, id=%d", log_id);
+          TBSYS_LOG(ERROR, "can't parse log file, id=%ld", log_id);
+          report_msg(MSG_ERROR, "can't parse log file, id=%ld", log_id);
         }
       } else {
-        TBSYS_LOG(ERROR, "can't get log[%d] from nas", log_id);
+        TBSYS_LOG(ERROR, "can't get log[%ld] from nas", log_id);
       }
     } else {                                    /* parse log success */
       if (remove_log_file(log_id) != OB_SUCCESS) {
