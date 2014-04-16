@@ -1,18 +1,20 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_simple_condition.cpp for ...
+ *
+ *
+ * Version: 0.1: ob_simple_condition.cpp,v 0.1 2011/03/17 15:39:30 zhidong Exp $
  *
  * Authors:
- *   xielun <xielun.szd@taobao.com>
+ *   chuanhui <xielun.szd@taobao.com>
+ *     - some work details if you want
  *
  */
+
 #include "ob_schema.h"
 #include "ob_string_search.h"
 #include "ob_simple_condition.h"
@@ -97,7 +99,7 @@ int ObSimpleCond::calc_sign(const ObObj & operand, uint64_t & sign)
   if ((ret != OB_SUCCESS) || (pattern.length() == 0))
   {
     ret = OB_ERROR;
-    TBSYS_LOG(ERROR, "get varchar pattern or check length failed:len[%ld], ret[%d]",
+    TBSYS_LOG(ERROR, "get varchar pattern or check length failed:len[%d], ret[%d]",
         pattern.length(), ret);
   }
   else
@@ -335,6 +337,5 @@ DEFINE_GET_SERIALIZE_SIZE(ObSimpleCond)
   total_size += right_operand_.get_serialize_size();
   return total_size;
 }
-
 
 

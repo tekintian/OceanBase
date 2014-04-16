@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
  *
- * ob_sstable_block_index_buffer.h
+ * ob_sstable_block_index_buffer.h is for what ...
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   Author fangji.hcm <fangji.hcm@taobao.com>
  *
  */
 
@@ -21,6 +19,7 @@
 #include "common/ob_define.h"
 #include "common/ob_string.h"
 #include "common/ob_malloc.h"
+#include "common/ob_rowkey.h"
 
 namespace oceanbase
 {
@@ -28,7 +27,7 @@ namespace oceanbase
   {
     struct ObSSTableBlockIndexItem
     {
-      int16_t  reserved16_;          //must be 0 V0.2.0
+      int16_t  rowkey_column_count_; //rowkey column count with table, used by v0.2.1
       uint16_t column_group_id_;     //column group id       
       uint32_t table_id_;            //table id
       int32_t  block_record_size_;   //block record size includes record header
@@ -66,6 +65,7 @@ namespace oceanbase
        *
        * @return int if success, return OB_SUCCESS, else return OB_ERROR
        */
+      int add_key(const common::ObRowkey& key);
       int add_key(const common::ObString& key);
 
       /**

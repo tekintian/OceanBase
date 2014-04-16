@@ -1,18 +1,19 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ *  (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License version 2 as
+ *  published by the Free Software Foundation.
  *
- * thread_buffer.cpp for ...
+ *         ????.cpp is for what ...
  *
- * Authors:
- *   qushan <qushan@taobao.com>
+ *  Version: $Id: ipvsadm.c,v 1.27 2005/12/10 16:00:07 wensong Exp $
  *
+ *  Authors:
+ *     qushan <qushan@taobao.com>
+ *        - some work details if you want
  */
+
 #include "thread_buffer.h"
 #include <stdint.h>
 #include "tblog.h"
@@ -23,8 +24,8 @@ namespace
   const pthread_key_t INVALID_THREAD_KEY = UINT32_MAX;
 }
 
-namespace oceanbase 
-{ 
+namespace oceanbase
+{
   namespace common
   {
     ThreadSpecificBuffer::ThreadSpecificBuffer(const int32_t size)
@@ -64,7 +65,7 @@ namespace oceanbase
 
     void ThreadSpecificBuffer::destroy_thread_key(void* ptr)
     {
-      TBSYS_LOG(DEBUG, "delete thread specific ptr:%p", ptr);
+      TBSYS_LOG(INFO, "delete thread specific buffer, ptr=%p", ptr);
       if (NULL != ptr) ob_free(ptr);
     }
 
@@ -80,7 +81,7 @@ namespace oceanbase
           if (NULL != ptr)
           {
             int ret = pthread_setspecific(key_, ptr);
-            if (0 != ret) 
+            if (0 != ret)
             {
               TBSYS_LOG(ERROR, "pthread_setspecific failed:%d", ret);
               ob_free(ptr);
@@ -88,6 +89,7 @@ namespace oceanbase
             }
             else
             {
+              TBSYS_LOG(DEBUG, "new thread specific buffer, addr=%p size=%d this=%p", ptr, size_, this);
               buffer = new (ptr) Buffer(static_cast<char*>(ptr) + sizeof(Buffer), size_);
             }
           }
@@ -135,7 +137,7 @@ namespace oceanbase
       return ret;
     }
 
-    void ThreadSpecificBuffer::Buffer::reset() 
+    void ThreadSpecificBuffer::Buffer::reset()
     {
       end_ = start_;
     }
@@ -161,7 +163,3 @@ namespace oceanbase
 
   } // end namespace chunkserver
 } // end namespace oceanbase
-
-
-
-

@@ -1,18 +1,15 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
  *
- * ob_sstable_block_builder.h
+ * ob_sstable_block_builder.h for persistent ssatable block and 
+ * store inner block index. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
- * Changes: 
- *     fangji <fangji.hcm@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef OCEANBASE_SSTABLE_OB_BLOCK_BUILDER_H_
@@ -20,6 +17,7 @@
 
 #include "common/ob_define.h"
 #include "common/ob_malloc.h"
+#include "common/ob_row.h"
 #include "ob_sstable_row.h"
 
 namespace oceanbase 
@@ -63,7 +61,10 @@ namespace oceanbase
        *  
        * @return const char*
        */
-      const char* row_index_buf() const;
+      inline const char* row_index_buf() const
+      { 
+        return row_index_buf_; 
+      }
 
       /**
        * return the block buffer 
@@ -76,7 +77,10 @@ namespace oceanbase
        * 
        * @return const char* 
        */
-      const char* block_buf() const;
+      inline const char* block_buf() const
+      { 
+        return block_buf_; 
+      }
 
       /**
        * reset all the members
@@ -91,7 +95,10 @@ namespace oceanbase
        * 
        * @return int32_t 
        */
-      const int64_t get_row_index_array_offset() const;
+      inline const int64_t get_row_index_array_offset() const
+      {
+        return block_header_.row_index_array_offset_;
+      }
 
       /**
        * return row count in the block, if there is no row in block, 
@@ -99,21 +106,31 @@ namespace oceanbase
        * 
        * @return int32_t 
        */
-      const int64_t get_row_count() const;
+      inline const int64_t get_row_count() const
+      {
+        return block_header_.row_count_;
+      }
 
       /**
        * return how much space to used to store this block in disk  
        * 
        * @return int64_t return block size
        */
-      const int64_t get_block_size() const;
+      inline const int64_t get_block_size() const
+      {
+        return ((block_buf_cur_ - block_buf_) 
+                + (row_index_buf_cur_ - row_index_buf_));
+      }
 
       /**
        * return the size of row index array 
        * 
        * @return int64_t 
        */
-      const int64_t get_row_index_size() const;
+      inline const int64_t get_row_index_size() const
+      {
+        return (row_index_buf_cur_ - row_index_buf_);
+      }
 
       /**
        * return the row data size in the block, not include row index, 
@@ -121,7 +138,10 @@ namespace oceanbase
        * 
        * @return int64_t 
        */
-      const int64_t get_block_data_size() const;
+      inline const int64_t get_block_data_size() const
+      {
+        return (block_buf_cur_ - block_buf_);
+      }
 
       /**
        * initialize the index buffer and block buffer, user must run 
@@ -159,7 +179,9 @@ namespace oceanbase
        * @return int if success,return OB_SUCCESS, else return 
        *         OB_ERROR
        */
-      int add_row(const ObSSTableRow &row);
+      int add_row(const ObSSTableRow &row, uint64_t &row_checksum, const int64_t row_serialize_size = 0);
+      int add_row(const uint64_t table_id, const uint64_t column_group_id, 
+          const common::ObRow &row, const int64_t row_serialize_size = 0);
 
       /**
        * merge block header, block data and row index into one block 

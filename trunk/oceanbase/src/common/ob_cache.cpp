@@ -1,16 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_cache.cpp for ...
+ * ob_cache.cpp is for what ...
+ *
+ * Version: $id: ob_cache.cpp,v 0.1 8/19/2010 3:20p wushi Exp $
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
+ *     - some work details if you want
  *
  */
 #include "ob_cache.h"
@@ -119,7 +120,6 @@ const oceanbase::common::ObString& oceanbase::common::ObCachePair::get_value() c
 ///     total_ref_num_ ++;
 ///   }
 /// }
-
 
 
 

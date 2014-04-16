@@ -1,20 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_fileinfo_cache.h
+ * ob_fileinfo_cache.h for file info cache. 
  *
  * Authors:
- *     yubai <yubai.lk@taobao.com>
- * Changes: 
- *     huating <huating.zmq@taobao.com>
- *     qushan <qushan@taobao.com>
- *     maoqi <maoqi@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef  OCEANBASE_CHUNKSERVER_FILECACHE_H_
@@ -53,9 +47,11 @@ namespace oceanbase
 
       public:
         int init(const int64_t max_cache_num);
+        int enlarg_cache_num(const int64_t max_cache_num);
         int destroy();
 
       public:
+        const FileInfo *get_cache_fileinfo(const uint64_t sstable_id);
         virtual const common::IFileInfo *get_fileinfo(const uint64_t sstable_id);
         virtual int revert_fileinfo(const common::IFileInfo *file_info);
         int clear();

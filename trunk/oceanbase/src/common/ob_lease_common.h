@@ -1,16 +1,17 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_lease_common.h for ...
+ *
+ *
+ * Version: 0.1: ob_lease_common.h,v 0.1 2010/12/01 09:23:46 chuanhui Exp $
  *
  * Authors:
- *   yanran <yanran.hfs@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - some work details if you want
  *
  */
 #ifndef __OCEANBASE_COMMON_OB_LEASE_COMMON_H__
@@ -37,5 +38,4 @@ namespace oceanbase
 }
 
 #endif //__OCEANBASE_COMMON_OB_LEASE_COMMON_H__
-
 

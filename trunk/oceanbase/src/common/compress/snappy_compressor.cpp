@@ -1,18 +1,17 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation. 
  *
- * ./snappy_compressor.cpp for ...
+ * snappy_compressor.cpp is for what ...
  *
  * Authors:
- *   qushan <qushan@taobao.com>
+ *   Author fangji.hcm <fangji.hcm@taobao.com>
  *
  */
+
 #include <new>
 #include <string>
 #include <snappy.h>
@@ -120,4 +119,3 @@ void destroy(ObCompressor *snappy)
     snappy = NULL;
   }
 }
-

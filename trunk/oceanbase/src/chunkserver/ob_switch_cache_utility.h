@@ -1,18 +1,15 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_switch_cache_utility.h
+ * ob_switch_cache_utility.h for switch block cache and block 
+ * index cache. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
- * Changes: 
- *     qushan <qushan@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef OCEANBASE_CHUNKSERVER_OB_SWITCH_CACHE_UTILITY_H_

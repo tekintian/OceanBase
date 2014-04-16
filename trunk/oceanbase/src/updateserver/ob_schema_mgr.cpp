@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_schema_mgr.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_schema_mgr.cpp updateserver / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2010-10-08 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #include "ob_schema_mgr.h"
 
 namespace oceanbase
@@ -549,6 +553,4 @@ namespace oceanbase
     }
   }
 }
-
-
 

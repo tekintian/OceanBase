@@ -1,29 +1,29 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_bloomfilter.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_bloomfilter.h / common / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2011-01-18 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #ifndef  OCEANBASE_COMMON_BLOOM_FILTER_H_
 #define  OCEANBASE_COMMON_BLOOM_FILTER_H_
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <pthread.h>
-#include <new>
-#include <algorithm>
+#include <limits.h>
 #include "ob_define.h"
-#include "ob_malloc.h"
-#include "murmur_hash.h"
 
 namespace oceanbase
 {
@@ -54,91 +54,27 @@ namespace oceanbase
         void clear();
         int deep_copy(const bloom_filter_t &other);
         int insert(const T &element);
-        bool contain(const T &element) const;
+        bool may_contain(const T &element) const;
         int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
         int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
         int64_t get_serialize_size(void) const;
         static int64_t calc_nbyte(const int64_t nbit);
+        int64_t get_nhash() const;
+        int64_t get_nbit() const;
+        const uint8_t* get_bits() const;
+        int operator | (const bloom_filter_t& other);
+        int reinit(const uint8_t* buf, const int64_t nbyte);
+        inline Alloc* get_allocator()
+        {
+          return &alloc_;
+        }
+
       private:
         mutable HashFunc hash_func_;
         Alloc alloc_;
         int64_t nhash_;
         int64_t nbit_;
         uint8_t *bits_;
-    };
-
-    class TableBloomFilter
-    {
-      struct DefaultAllocator
-      {
-        void *alloc(const int32_t nbyte) { return ob_malloc(nbyte); };
-        void free(void *ptr) { ob_free(ptr); };
-      };
-      struct Elemnet
-      {
-        uint64_t table_id;
-        ObString row_key;
-      };
-      struct HashFunc
-      {
-        int64_t operator () (const Elemnet &key, const int64_t hash) const
-        {
-          return (murmurhash2(key.row_key.ptr(), key.row_key.length(), hash) + key.table_id);
-        };
-      };
-      public:
-        TableBloomFilter() : bf_()
-        {
-        };
-        ~TableBloomFilter()
-        {
-        };
-        DISALLOW_COPY_AND_ASSIGN(TableBloomFilter);
-      public:
-        int init(const int64_t nhash, const int64_t nbyte)
-        {
-          return bf_.init(nhash, nbyte * CHAR_BIT);
-        };
-        void destroy()
-        {
-          bf_.destroy();
-        };
-        void clear()
-        {
-          bf_.clear();
-        };
-        int deep_copy(const TableBloomFilter &other)
-        {
-          return bf_.deep_copy(other.bf_);
-        };
-        int insert(const uint64_t table_id, const ObString &row_key)
-        {
-          Elemnet key;
-          key.table_id = table_id;
-          key.row_key = row_key;
-          return bf_.insert(key);
-        };
-        bool contain(const uint64_t table_id, const ObString &row_key) const
-        {
-          Elemnet key;
-          key.table_id = table_id;
-          key.row_key = row_key;
-          return bf_.contain(key);
-        };
-        int serialize(char* buf, const int64_t buf_len, int64_t& pos) const
-        {
-          return bf_.serialize(buf, buf_len, pos);
-        };
-        int deserialize(const char* buf, const int64_t data_len, int64_t& pos)
-        {
-          return bf_.deserialize(buf, data_len, pos);
-        };
-        int64_t get_serialize_size(void) const
-        {
-          return bf_.get_serialize_size();
-        };
-      private:
-        ObBloomFilter<Elemnet, HashFunc, DefaultAllocator> bf_;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -160,7 +96,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (OB_SUCCESS != (ret = init(other.nhash_, other.nbit_)))
       {
-        TBSYS_LOG(WARN, "init fail ret=%d");
+        TBSYS_LOG(WARN, "init fail ret=%d", ret);
       }
       else
       {
@@ -189,7 +125,7 @@ namespace oceanbase
       {
         destroy();
         const int64_t nbyte = calc_nbyte(nbit);
-        bits_ = (uint8_t*)alloc_.alloc(nbyte);
+        bits_ = (uint8_t*)alloc_.alloc(static_cast<int32_t>(nbyte));
         if (NULL == bits_)
         {
           TBSYS_LOG(WARN, "bits_ null pointer, nbit_=%ld", nbit_);
@@ -239,18 +175,18 @@ namespace oceanbase
       }
       else
       {
-        int64_t hash = 0;
+        uint64_t hash = 0;
         for (int64_t i = 0; i < nhash_; ++i)
         {
-          hash = hash_func_(element, hash) % nbit_;
-          bits_[hash / CHAR_BIT] |= (1 << (hash % CHAR_BIT));
+          hash = (hash_func_(element, hash) % nbit_);
+          bits_[hash / CHAR_BIT] = static_cast<unsigned char>(bits_[hash / CHAR_BIT] | (1 << (hash % CHAR_BIT)));
         }
       }
       return ret;
     }
 
     template <class T, class HashFunc, class Alloc>
-    bool ObBloomFilter<T, HashFunc, Alloc>::contain(const T &element) const
+    bool ObBloomFilter<T, HashFunc, Alloc>::may_contain(const T &element) const
     {
       bool bret = true;
       if (NULL == bits_
@@ -262,14 +198,14 @@ namespace oceanbase
       }
       else
       {
-        uint32_t hash = 0;
+        uint64_t hash = 0;
         uint8_t byte_mask = 0;
         uint8_t byte = 0;
         for (int64_t i = 0; i < nhash_; ++i)
         {
-          hash = hash_func_(element, hash) % nbit_;
+          hash = static_cast<uint32_t>(hash_func_(element, hash) % nbit_);
           byte = bits_[hash / CHAR_BIT];
-          byte_mask = (1 << (hash % CHAR_BIT));
+          byte_mask = static_cast<int8_t>(1 << (hash % CHAR_BIT));
           if (0 == (byte & byte_mask))
           {
             bret = false;
@@ -331,7 +267,7 @@ namespace oceanbase
         else
         {
           if (0 != nbyte
-              && NULL == (bits_ = (uint8_t*)alloc_.alloc(nbyte)))
+              && NULL == (bits_ = (uint8_t*)alloc_.alloc(static_cast<int32_t>(nbyte))))
           {
             TBSYS_LOG(WARN, "alloc bits_ fail nbyte=%ld", nbyte);
             ret = OB_ERROR;
@@ -353,9 +289,75 @@ namespace oceanbase
     {
       return (sizeof(BinData) + calc_nbyte(nbit_));
     }
-  }
-}
+
+    template <class T, class HashFunc, class Alloc>
+    int64_t ObBloomFilter<T, HashFunc, Alloc>::get_nbit() const
+    {
+      return nbit_;
+    }
+
+    template <class T, class HashFunc, class Alloc>
+    int64_t ObBloomFilter<T, HashFunc, Alloc>::get_nhash() const
+    {
+      return nhash_;
+    }
+
+    template <class T, class HashFunc, class Alloc>
+    const uint8_t* ObBloomFilter<T, HashFunc, Alloc>::get_bits() const
+    {
+      return bits_;
+    }
+
+    template <class T, class HashFunc, class Alloc>
+    int ObBloomFilter<T, HashFunc, Alloc>::operator | (const bloom_filter_t& other)
+    {
+      int ret = OB_SUCCESS;
+      int64_t nbit = other.get_nbit();
+      int64_t nhash = other.get_nhash();
+      const uint8_t* bits = other.get_bits();
+      uint8_t* cur_bits = bits_;
+
+      if (nbit_ != nbit || nhash_ != nhash)
+      {
+        ret = OB_ERROR;
+        TBSYS_LOG(WARN, "bloom_filter do not match");
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        const int64_t nbyte = calc_nbyte(nbit);
+        for (int i = 0; i < nbyte; i ++)
+        {
+          *cur_bits = (*cur_bits) | (*bits);
+          cur_bits ++;
+          bits ++;
+        }
+      }
+
+      return ret;
+    }
+
+    template <class T, class HashFunc, class Alloc>
+    int ObBloomFilter<T, HashFunc, Alloc>::reinit(const uint8_t* buf,
+        const int64_t nbyte)
+    {
+      int ret = OB_SUCCESS;
+      if (nbyte * 8 != nbit_)
+      {
+        TBSYS_LOG(WARN, "the buffer size is not equal:nbyte*8=%ld,nbit_=%ld",
+            nbyte*8, nbit_);
+        ret = OB_ERROR;
+      }
+      else
+      {
+        memcpy(bits_, buf, nbyte);
+      }
+      return ret;
+    }
+
+
+  }//end namespace common
+}//end namespace oceanbase
 
 #endif //OCEANBASE_COMMON_BLOOM_FILTER_H_
-
 

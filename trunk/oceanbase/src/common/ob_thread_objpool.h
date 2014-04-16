@@ -1,18 +1,21 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_thread_objpool.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_thread_objpool.h common / Oceanbase
+ //
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ //
+ // Created on 2011-03-08 by Yubai (yubai.lk@taobao.com)
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ //
+ // Change Log
+ //
+////====================================================================
 #ifndef  OCEANBASE_COMMON_THREAD_OBJPOOL_H_
 #define  OCEANBASE_COMMON_THREAD_OBJPOOL_H_
 #include <stdlib.h>
@@ -46,7 +49,7 @@ namespace oceanbase
           BaseNode *ret = (BaseNode*)ob_malloc(sizeof(BaseNode), ALLOC_MOD);
           if (NULL != ret)
           {
-            ret = new(ret) BaseNode();         
+            ret = new(ret) BaseNode();
           }
           return ret;
         };
@@ -149,7 +152,7 @@ namespace oceanbase
             ret = cur_node_array_->alloc();
             if (NULL != ret)
             {
-              ret = new(ret) BaseNode();         
+              ret = new(ret) BaseNode();
               break;
             }
             else
@@ -362,7 +365,7 @@ namespace oceanbase
               tail_ = head_;
             }
             atomic_inc((uint64_t*)&free_num_);
-            
+
             Node *iter = tail_;
             while (free_num_ > thread_max_free_num
                   && NULL != iter)
@@ -415,19 +418,19 @@ namespace oceanbase
         };
         void inc_ref() {};
         void dec_ref() {};
-        T *allocate()
+        T *alloc()
         {
           T *ret = NULL;
-          ObjPool *pool = GET_TSI(ObjPool);
+          ObjPool *pool = GET_TSI_MULT(ObjPool, TSI_COMMON_OBJPOOL_1);
           if (NULL != pool)
           {
             ret = pool->alloc(gfrelist_);
           }
           return ret;
         };
-        void deallocate(T *ptr)
+        void free(T *ptr)
         {
-          ObjPool *pool = GET_TSI(ObjPool);
+          ObjPool *pool = GET_TSI_MULT(ObjPool, TSI_COMMON_OBJPOOL_1);
           if (NULL != pool)
           {
             pool->free(ptr, gfrelist_, thread_max_free_num_, global_max_free_num_);
@@ -442,5 +445,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_THREAD_OBJPOOL_H_
-
-

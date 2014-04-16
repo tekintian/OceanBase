@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./btree_write_handle.cpp for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #include "btree_alloc.h"
 #include "btree_base.h"
 #include "btree_node.h"
@@ -243,7 +228,7 @@ namespace oceanbase
           handle->prev_root_pointer_ = prev_proot;
           prev_proot->init(node_allocator_);
           handle->ppr_create_ = 1;
-          handle->level_ = level_ + 1;
+          handle->level_ = static_cast<int16_t>(level_ + 1);
           handle->parent_ = this;
           handle->old_key_list_.init(BtreeArrayList::NODE_SIZE);
           handle->new_key_list_.init(sizeof(BtreeWriteHandle));
@@ -363,4 +348,3 @@ namespace oceanbase
 
   } // end namespace common
 } // end namespace oceanbase
-

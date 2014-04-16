@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./btree_array_list.cpp for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #include "btree_define.h"
 #include "btree_alloc.h"
 #include "btree_array_list.h"
@@ -36,7 +21,7 @@ namespace oceanbase
     void BtreeArrayList::init(int32_t struct_size)
     {
       assert(struct_size <= NODE_SIZE);
-      max_copy_node_count_ = (NODE_SIZE - struct_size) / sizeof(void*);
+      max_copy_node_count_ = static_cast<int32_t>((NODE_SIZE - struct_size) / sizeof(void*));
 
       copy_node_count_ = 0;
       copy_list_start_ = NULL;
@@ -274,4 +259,3 @@ namespace oceanbase
     }
   } // end namespace common
 } // end namespace oceanbase
-

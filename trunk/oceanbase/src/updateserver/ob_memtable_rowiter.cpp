@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_memtable_rowiter.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_memtable_rowiter.cpp updateserver / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2011-03-24 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #include "common/ob_define.h"
 #include "common/ob_atomic.h"
 #include "common/ob_tsi_factory.h"
@@ -20,7 +24,6 @@
 #include "sstable/ob_sstable_block_builder.h"
 #include "ob_memtable_rowiter.h"
 #include "ob_update_server_main.h"
-#include "ob_ups_tmps.h"
 
 namespace oceanbase
 {
@@ -31,7 +34,8 @@ namespace oceanbase
 
     MemTableRowIterator::MemTableRowIterator() : memtable_(NULL),
                                                  memtable_iter_(),
-                                                 memtable_trans_handle_()
+                                                 get_iter_(),
+                                                 rc_iter_()
     {
       reset_();
     }
@@ -41,8 +45,7 @@ namespace oceanbase
       destroy();
     }
 
-    int MemTableRowIterator::init(MemTable *memtable, const char *compressor_name,
-                                  const int64_t block_size, const int store_type)
+    int MemTableRowIterator::init(MemTable *memtable, const int store_type)
     {
       int ret = OB_SUCCESS;
       if (NULL != memtable_)
@@ -50,11 +53,9 @@ namespace oceanbase
         TBSYS_LOG(WARN, "have already inited");
         ret = OB_INIT_TWICE;
       }
-      else if (NULL == memtable
-          || NULL == compressor_name
-          || OB_MAX_COMPRESSOR_NAME_LENGTH <= snprintf(compressor_name_, OB_MAX_COMPRESSOR_NAME_LENGTH, "%s", compressor_name))
+      else if (NULL == memtable)
       {
-        TBSYS_LOG(WARN, "invalid param memtable=%p compressor_name=%s", memtable_, compressor_name);
+        TBSYS_LOG(WARN, "invalid param memtable=%p", memtable_);
         ret = OB_INVALID_ARGUMENT;
       }
       else if (!get_schema_handle_())
@@ -62,14 +63,13 @@ namespace oceanbase
         TBSYS_LOG(WARN, "get schema handle fail");
         ret = OB_ERROR;
       }
-      else if (OB_SUCCESS != (ret = memtable->scan_all_start(memtable_trans_handle_, memtable_iter_)))
+      else if (OB_SUCCESS != (ret = memtable->scan_all(memtable_iter_)))
       {
         TBSYS_LOG(WARN, "scan all start fail ret=%d memtable=%p", ret, memtable);
         revert_schema_handle_();
       }
       else
       {
-        block_size_ = block_size;
         store_type_ = store_type;
         memtable_ = memtable;
       }
@@ -80,21 +80,17 @@ namespace oceanbase
     {
       if (NULL != memtable_)
       {
-        memtable_->scan_all_end(memtable_trans_handle_);
+        memtable_iter_.reset();
         revert_schema_handle_();
         memtable_ = NULL;
-        allocator_.clear();
       }
       reset_();
     }
 
     void MemTableRowIterator::reset_()
     {
-      first_next_ = false;
       schema_handle_ = UpsSchemaMgr::INVALID_SCHEMA_HANDLE;
-      block_size_ = 0;
       store_type_ = 0;
-      memset(compressor_name_, 0, sizeof(compressor_name_));
     }
 
     void MemTableRowIterator::revert_schema_handle_()
@@ -130,9 +126,8 @@ namespace oceanbase
       else
       {
         TBSYS_LOG(INFO, "reset row_iter this=%p", this);
-        memtable_->scan_all_end(memtable_trans_handle_);
-        first_next_ = false;
-        ret = memtable_->scan_all_start(memtable_trans_handle_, memtable_iter_);
+        memtable_iter_.reset();
+        ret = memtable_->scan_all(memtable_iter_);
       }
       return ret;
     }
@@ -145,20 +140,6 @@ namespace oceanbase
         TBSYS_LOG(WARN, "have not inited this=%p", this);
         ret = OB_NOT_INIT;
       }
-      else if (!first_next_)
-      {
-        TEKey key;
-        TEValue value;
-        if (OB_SUCCESS != memtable_iter_.get_key(key)
-            || OB_SUCCESS != memtable_iter_.get_value(value))
-        {
-          ret = OB_ITER_END;
-        }
-        else
-        {
-          first_next_ = true;
-        }
-      }
       else
       {
         ret = memtable_iter_.next();
@@ -169,94 +150,52 @@ namespace oceanbase
     int MemTableRowIterator::get_row(sstable::ObSSTableRow &sstable_row)
     {
       int ret = OB_SUCCESS;
-      TEKey key;
-      TEValue value;
+      const TEKey key = memtable_iter_.get_key();
+      const TEValue *pvalue = memtable_iter_.get_value();
       if (NULL == memtable_)
       {
         TBSYS_LOG(WARN, "have not inited this=%p", this);
         ret = OB_NOT_INIT;
       }
-      else if (OB_SUCCESS != (ret = memtable_iter_.get_key(key))
-              || OB_SUCCESS != (ret = memtable_iter_.get_value(value)))
+      else if (NULL == pvalue)
       {
-        TBSYS_LOG(WARN, "get key-value from memtable_iter fail ret=%d", ret);
+        TBSYS_LOG(WARN, "value null pointer");
+        ret = OB_ERROR;
       }
       else
       {
-        allocator_.reset();
-        if (!merge(key, value, allocator_))
+        sstable_row.clear();
+        if (OB_SUCCESS != (ret = sstable_row.set_internal_rowkey(key.table_id, key.row_key)))
         {
-          TBSYS_LOG(WARN, "merge te_value fail key=[%s] value=[%s]", key.log_str(), value.log_str());
-          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "set internal rowkey to sstable_row fail key=[%s]", key.log_str());
         }
-        else
+        // TODO sstable是否支持读取rowkey列
+        get_iter_.set_(key, pvalue, NULL, true, NULL);
+        rc_iter_.set_iterator(&get_iter_);
+        while (OB_SUCCESS == (ret = rc_iter_.next_cell()))
         {
-          sstable_row.clear();
-          if (OB_SUCCESS != (ret = sstable_row.set_table_id(key.table_id)))
+          ObCellInfo *ci = NULL;
+          if (OB_SUCCESS != (ret = rc_iter_.get_cell(&ci))
+              || NULL == ci)
           {
-            TBSYS_LOG(WARN, "set table id to sstable_row fail key=[%s]", key.log_str());
+            TBSYS_LOG(WARN, "get cell from get_iter/rc_iter fail ret=%d", ret);
+            ret = (OB_SUCCESS == ret) ? OB_ERROR : ret;
+            break;
           }
-          else if (OB_SUCCESS != (ret = sstable_row.set_row_key(key.row_key)))
+          // sstable不接受column_id为OB_INVALID_ID所以转成了0
+          // 迭代出来后需要再修改成OB_INVALID_ID
+          uint64_t column_id = ci->column_id_;
+          if (OB_INVALID_ID == column_id)
           {
-            TBSYS_LOG(WARN, "set row key to sstable_row fail key=[%s]", key.log_str());
+            column_id = OB_FULL_ROW_COLUMN_ID;
           }
-          else if (OB_SUCCESS != (ret = sstable_row.set_column_group_id(DEFAULT_COLUMN_GROUP_ID)))
+          if (OB_SUCCESS != (ret = sstable_row.shallow_add_obj(ci->value_, column_id)))
           {
-            TBSYS_LOG(WARN, "set column group id=%lu to sstable_row fail key=[%s]",
-                      DEFAULT_COLUMN_GROUP_ID, key.log_str());
-          }
-          ObCellInfoNode *iter = value.list_head;
-          while (OB_SUCCESS == ret)
-          {
-            // sstable不接受column_id为OB_INVALID_ID所以转成了0
-            // 迭代出来后需要再修改成OB_INVALID_ID
-            uint64_t column_id = iter->cell_info.column_id_;
-            if (OB_INVALID_ID == column_id)
-            {
-              column_id = OB_FULL_ROW_COLUMN_ID;
-            }
-            if (OB_SUCCESS != (ret = sstable_row.add_obj(iter->cell_info.value_, column_id)))
-            {
-              TBSYS_LOG(WARN, "add obj to sstable_row fail ret=%d column_id=%lu key=[%s]",
-                        ret, iter->cell_info.column_id_, key.log_str());
-              break;
-            }
-            if (value.list_tail == iter)
-            {
-              break;
-            }
-            iter = iter->next;
-          }
-          if (OB_SUCCESS == ret
-              && ROW_ST_NOT_EXIST != value.row_stat)
-          {
-            ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
-            if (NULL == ups_main)
-            {
-              TBSYS_LOG(WARN, "get ups main fail key=[%s]", key.log_str());
-              ret = OB_ERROR;
-            }
-            else
-            {
-              UpsSchemaMgr &schema_mgr = ups_main->get_update_server().get_table_mgr().get_schema_mgr();
-              uint64_t ctime_id = schema_mgr.get_create_time_column_id(schema_handle_, key.table_id);
-              uint64_t mtime_id = schema_mgr.get_modify_time_column_id(schema_handle_, key.table_id);
-              if (OB_INVALID_ID != ctime_id)
-              {
-                ObObj ctime;
-                ctime.set_createtime(value.create_time);
-                ret = sstable_row.add_obj(ctime, ctime_id);
-              }
-              if (OB_SUCCESS == ret
-                  && OB_INVALID_ID != mtime_id)
-              {
-                ObObj mtime;
-                mtime.set_modifytime(value.modify_time);
-                ret = sstable_row.add_obj(mtime, mtime_id);
-              }
-            }
+            TBSYS_LOG(WARN, "add obj to sstable_row fail ret=%d [%s]", ret, print_cellinfo(ci));
+            break;
           }
         }
+        ret = (OB_ITER_END == ret) ? OB_SUCCESS : ret;
       }
       return ret;
     }
@@ -264,9 +203,17 @@ namespace oceanbase
     bool MemTableRowIterator::get_compressor_name(ObString &compressor_str)
     {
       bool bret = false;
-      if (NULL != memtable_)
+      ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
+      if (NULL != ups_main)
       {
-        compressor_str.assign_ptr(compressor_name_, strnlen(compressor_name_, OB_MAX_COMPRESSOR_NAME_LENGTH));
+        const char *compressor_name = ups_main->get_update_server().get_param().sstable_compressor_name;
+        if (NULL == compressor_name
+            || 0 == strlen(compressor_name))
+        {
+          compressor_name = DEFAULT_COMPRESSOR_NAME;
+        }
+        compressor_str.assign_ptr(const_cast<char*>(compressor_name), static_cast<int32_t>(strlen(compressor_name)));
+        TBSYS_LOG(INFO, "get compressor_name=%s from config", compressor_name);
         bret = true;
       }
       return bret;
@@ -290,6 +237,11 @@ namespace oceanbase
       return bret;
     }
 
+    const ObRowkeyInfo *MemTableRowIterator::get_rowkey_info(const uint64_t table_id) const
+    {
+      return RowkeyInfoCache::get_rowkey_info(table_id);
+    }
+
     bool MemTableRowIterator::get_store_type(int &store_type)
     {
       bool bret = false;
@@ -304,15 +256,15 @@ namespace oceanbase
     bool MemTableRowIterator::get_block_size(int64_t &block_size)
     {
       bool bret = false;
-      if (NULL != memtable_)
+      ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
+      if (NULL != ups_main)
       {
-        block_size = block_size_;
+        block_size = ups_main->get_update_server().get_param().sstable_block_size;
+        TBSYS_LOG(INFO, "get block_size=%ld from config", block_size);
         bret = true;
       }
       return bret;
     }
   }
 }
-
-
 

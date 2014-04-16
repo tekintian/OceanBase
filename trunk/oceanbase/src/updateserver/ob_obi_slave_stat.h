@@ -22,9 +22,11 @@ namespace oceanbase
   {
     enum ObiSlaveStat
     {
+      MIN_SLAVE_STAT = 0,
       FOLLOWED_SLAVE = 1,
       STANDALONE_SLAVE = 2,
-      UNKNOWN_SLAVE = 3
+      UNKNOWN_SLAVE = 3,
+      MAX_SLAVE_STAT = 4,
     };
   } // end namespace updateserver
 } // end namespace oceanbase

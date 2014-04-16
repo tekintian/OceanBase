@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./ob_hashset.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_hashset.cpp / hash / common / Oceanbase
+ //
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ //
+ // Created on 2010-12-27 by Yubai (yubai.lk@taobao.com)
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ //
+ // Change Log
+ //
+////====================================================================
+
 #ifndef  OCEANBASE_COMMON_HASH_HASHSET_H_
 #define  OCEANBASE_COMMON_HASH_HASHSET_H_
 #include <stdlib.h>
@@ -48,7 +52,7 @@ namespace oceanbase
       {
         typedef typename HashSetTypes<_key_type>::pair_type pair_type;
         typedef ObHashSet<_key_type, _hashfunc, _equal, _allocer, _defendmode> hashset;
-        typedef ObHashTable<_key_type, pair_type, _hashfunc, _equal, pair_first<pair_type>, _allocer, _defendmode, _bucket_array> hashtable;
+        typedef ObHashTable<_key_type, pair_type, _hashfunc, _equal, pair_first<pair_type>, _allocer, _defendmode, _bucket_array, oceanbase::common::ObMalloc> hashtable;
       public:
         typedef typename hashtable::iterator iterator;
         typedef typename hashtable::const_iterator const_iterator;
@@ -56,7 +60,7 @@ namespace oceanbase
         ObHashSet(const hashset &);
         hashset operator= (const hashset &);
       public:
-        ObHashSet() : ht_()
+          ObHashSet() : bucket_allocer_(ObModIds::OB_HASH_BUCKET), ht_()
         {
         };
         ~ObHashSet()
@@ -85,11 +89,11 @@ namespace oceanbase
         };
         int create(int64_t bucket_num)
         {
-          return ht_.create(cal_next_prime(bucket_num), &allocer_);
+          return ht_.create(cal_next_prime(bucket_num), &allocer_, &bucket_allocer_);
         };
         int create(int64_t bucket_num, _allocer *allocer)
         {
-          return ht_.create(cal_next_prime(bucket_num), allocer);
+          return ht_.create(cal_next_prime(bucket_num), allocer, &bucket_allocer_);
         };
         int destroy()
         {
@@ -101,7 +105,7 @@ namespace oceanbase
         };
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在
-        // 返回  HASH_NOEXIST表示结点不存在
+        // 返回  HASH_NOT_EXIST表示结点不存在
         int exist(const _key_type &key) const
         {
           int ret = 0;
@@ -122,7 +126,7 @@ namespace oceanbase
         };
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在并删除成功
-        // 返回  HASH_NOEXIST表示结点不存在不用删除
+        // 返回  HASH_NOT_EXIST表示结点不存在不用删除
         // 如果value指针不为空并且删除成功则将值存入value指向的空间
         int erase(const _key_type &key)
         {
@@ -142,6 +146,7 @@ namespace oceanbase
         };
       private:
         _allocer allocer_;
+          oceanbase::common::ObMalloc bucket_allocer_;
         hashtable ht_;
       };
     }
@@ -149,5 +154,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_HASH_HASHSET_H_
-
-

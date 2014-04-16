@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_sstable_mgr.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_sstable_mgr.cpp updateserver / Oceanbase
+ //
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ //
+ // Created on 2011-03-24 by Yubai (yubai.lk@taobao.com)
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ //
+ // Change Log
+ //
+////====================================================================
+
 #include "common/ob_define.h"
 #include "common/ob_atomic.h"
 #include "common/file_directory_utils.h"
@@ -63,14 +67,14 @@ namespace oceanbase
       err = string_buf_.write_string(sst_file_info.path, &(sst_fi.path));
       if (OB_SUCCESS != err)
       {
-        TBSYS_LOG(ERROR, "ObStringBuf write_string error, err=%d");
+        TBSYS_LOG(ERROR, "ObStringBuf write_string error, err=%d", err);
       }
       else
       {
         err = string_buf_.write_string(sst_file_info.name, &(sst_fi.name));
         if (OB_SUCCESS != err)
         {
-          TBSYS_LOG(ERROR, "ObStringBuf write_string error, err=%d");
+          TBSYS_LOG(ERROR, "ObStringBuf write_string error, err=%d", err);
         }
       }
 
@@ -86,8 +90,8 @@ namespace oceanbase
 
       if (OB_SUCCESS != err)
       {
-        TBSYS_LOG(ERROR, "err=%d sst_file_info.path=\"%.*s\"(path.length=%ld path.size=%ld)"
-            " sst_file_info.name=\"%.*s\"(name.length=%ld name.size=%ld)",
+        TBSYS_LOG(ERROR, "err=%d sst_file_info.path=\"%.*s\"(path.length=%d path.size=%d)"
+            " sst_file_info.name=\"%.*s\"(name.length=%d name.size=%d)",
             err, sst_file_info.path.length(), sst_file_info.path.ptr(),
             sst_file_info.path.length(), sst_file_info.path.size(),
             sst_file_info.name.length(), sst_file_info.name.ptr(),
@@ -369,7 +373,35 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(INFO, "rename from [%s] to [%s] succ", fpath, trash_fpath);
+          remove_schema_file_(path, fname_substr);
         }
+      }
+    }
+
+    void StoreInfo::remove_schema_file_(const char *path, const char *fname_substr)
+    {
+      const char *fpath = NULL;
+      const char *trash_fpath = NULL;
+      if (NULL != path
+          && NULL != fname_substr)
+      {
+        fpath = SSTableMgr::build_str("%s/%s%s", path, fname_substr, SCHEMA_SUFFIX);
+        trash_fpath = SSTableMgr::build_str("%s/%s/%s%s.%ld",
+                      path, TRASH_DIR, fname_substr, SCHEMA_SUFFIX, tbsys::CTimeUtil::getTime());
+      }
+      if (NULL == fpath
+          || NULL == trash_fpath)
+      {
+        TBSYS_LOG(WARN, "build schema fpath fail path=[%s] fpath=[%s] trash_fpath=[%s]",
+                  path, fpath, trash_fpath);
+      }
+      else if (0 != rename(fpath, trash_fpath))
+      {
+        TBSYS_LOG(WARN, "rename from [%s] to [%s] fail errno=%u", fpath, trash_fpath, errno);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "rename from [%s] to [%s] succ", fpath, trash_fpath);
       }
     }
 
@@ -426,7 +458,7 @@ namespace oceanbase
           if (NULL != store_info
               && 0 == store_info->dec_ref_cnt())
           {
-            sstable_mgr_->get_store_allocator().deallocate(store_infos_[i]);
+            sstable_mgr_->get_store_allocator().free(store_infos_[i]);
           }
         }
       }
@@ -459,7 +491,7 @@ namespace oceanbase
         {
           StoreInfo *store_info = NULL;
           if (NULL != sstable_mgr_
-              && NULL != (store_info = sstable_mgr_->get_store_allocator().allocate()))
+              && NULL != (store_info = sstable_mgr_->get_store_allocator().alloc()))
           {
             store_info->init(this, store_handle);
             store_infos_[store_num_++] = store_info;
@@ -477,7 +509,7 @@ namespace oceanbase
         ret = OB_ENTRY_NOT_EXIST;
       }
       else
-      { 
+      {
         ret = OB_ENTRY_NOT_EXIST;
         for (int64_t i = 0; i < store_num_; i++)
         {
@@ -493,7 +525,7 @@ namespace oceanbase
               }
               else
               {
-                sstable_mgr_->get_store_allocator().deallocate(store_info);
+                sstable_mgr_->get_store_allocator().free(store_info);
               }
             }
             if ((i + 1) < store_num_)
@@ -551,7 +583,7 @@ namespace oceanbase
       StoreInfo *ret = NULL;
       if (0 != store_num_)
       {
-        int64_t store_pos = (int64_t)atomic_inc((uint64_t*)&loop_pos_) % store_num_;
+        uint64_t store_pos = atomic_inc((uint64_t*)&loop_pos_) % store_num_;
         ret = store_infos_[store_pos];
       }
       return ret;
@@ -652,7 +684,7 @@ namespace oceanbase
         SSTableInfoMap::iterator iter;
         for (iter = sstable_info_map_.begin(); iter != sstable_info_map_.end(); iter++)
         {
-          sstable_allocator_.deallocate(iter->second);
+          sstable_allocator_.free(iter->second);
         }
         store_mgr_.destroy();
         sstable_info_map_.destroy();
@@ -699,6 +731,7 @@ namespace oceanbase
     {
       bool bret = false;
       sstable::ObSSTableSchema sstable_schema;
+      const ObRowkeyInfo *rowkey_info = NULL;
       ObString compressor_str;
       int store_type = 0;
       int64_t block_size = 0;
@@ -725,10 +758,11 @@ namespace oceanbase
       }
       else
       {
+        MultiFileUtils multi_file_utils;
         sstable::ObSSTableWriter sstable_writer;
         sstable::ObTrailerParam sstable_trailer_param;
-        MultiFileUtils multi_file_utils;
-        sstable_writer.set_file_sys(multi_file_utils);
+        sstable_writer.set_file_sys(&multi_file_utils);
+        sstable_writer.set_dio(sstable_dio_writing());
         sstable_trailer_param.compressor_name_ = compressor_str;
         sstable_trailer_param.table_version_ = sstable_id;
         sstable_trailer_param.store_type_ = store_type;
@@ -747,9 +781,24 @@ namespace oceanbase
           {
             if (OB_SUCCESS != (tmp_ret = iter.get_row(sstable_row)))
             {
+              if (OB_SCHEMA_ERROR == tmp_ret)
+              {
+                continue;
+              }
               TBSYS_LOG(WARN, "get row fail ret=%d", tmp_ret);
               break;
             }
+            else if (NULL == (rowkey_info = iter.get_rowkey_info(sstable_row.get_table_id())))
+            {
+              TBSYS_LOG(WARN, "get rowkey info failed, table_id=%lu", sstable_row.get_table_id());
+              tmp_ret = OB_SCHEMA_ERROR;
+            }
+            /* TODO::: set_rowkey_info for write old fashion sstable
+            else if (OB_SUCCESS != (tmp_ret = sstable_row.set_rowkey_info(rowkey_info)))
+            {
+              TBSYS_LOG(WARN, "set rowkey info failed");
+            }
+            */
             else if (OB_SUCCESS != (tmp_ret = sstable_writer.append_row(sstable_row, approx_space_usage)))
             {
               TBSYS_LOG(WARN, "append row fail ret=%d table_id=%lu", tmp_ret, sstable_row.get_table_id());
@@ -760,8 +809,7 @@ namespace oceanbase
               TBSYS_LOG(DEBUG, "append row succ ret=%d table_id=%lu approx_space_usage=%ld",
                         tmp_ret, sstable_row.get_table_id(), approx_space_usage);
             }
-            if (ObRoleMgr::ACTIVE != ups_main->get_update_server().get_role_mgr().get_state()
-                && ObRoleMgr::INIT != ups_main->get_update_server().get_role_mgr().get_state())
+            if (ObUpsRoleMgr::STOP == ups_main->get_update_server().get_role_mgr().get_state())
             {
               TBSYS_LOG(WARN, "invalid role mgr stat=%d", ups_main->get_update_server().get_role_mgr().get_state());
               tmp_ret = OB_ERROR;
@@ -790,12 +838,13 @@ namespace oceanbase
     }
 
     bool SSTableMgr::build_multi_sstable_file_(const ObList<StoreMgr::Handle> &store_list,
-                                              SSTableInfo &sstable_info, const int64_t time_stamp, IRowIterator &iter)
+                                              SSTableInfo &sstable_info, const int64_t time_stamp,
+                                              IRowIterator &iter, const CommonSchemaManager *sm)
     {
       bool bret = false;
       static const int64_t fpaths_size = 512 * 1024;
       char *fpaths = NULL;
-      if (NULL == (fpaths = (char*)ob_malloc(fpaths_size)))
+      if (NULL == (fpaths = (char*)ob_malloc(fpaths_size, ObModIds::OB_UPS_SSTABLE_MGR)))
       {
         TBSYS_LOG(WARN, "malloc fpaths fail");
       }
@@ -838,7 +887,7 @@ namespace oceanbase
         if (0 < pos)
         {
           ObString fpath_str;
-          fpath_str.assign_ptr(fpaths, buffer_pos + 1);
+          fpath_str.assign_ptr(fpaths, static_cast<int32_t>(buffer_pos + 1));
           if (!build_sstable_file_(sstable_info.get_sstable_id(), fpath_str, time_stamp, iter))
           {
             TBSYS_LOG(WARN, "build sstable file fail sstable_id=%lu clog_id=%lu",
@@ -866,10 +915,11 @@ namespace oceanbase
             }
             else
             {
-              TBSYS_LOG(INFO, "rename [%s] to [%s] succ", fpath_tmp, fpath);
+              TBSYS_LOG(INFO, "rename [%s] to [%s] succ timeu=%ld", fpath_tmp, fpath, tbsys::CTimeUtil::getTime() - timestamp);
               sstable_info.add_store(store_handle);
             }
           }
+          build_schema_file_(path, fname_substr, sm);
         }
         if (0 >= sstable_info.get_store_num())
         {
@@ -888,7 +938,74 @@ namespace oceanbase
       return bret;
     }
 
-    int SSTableMgr::add_sstable(const uint64_t sstable_id, const uint64_t clog_id, const int64_t time_stamp, IRowIterator &iter)
+    bool SSTableMgr::build_schema_file_(const char *path, const char *fname_substr, const CommonSchemaManager *sm)
+    {
+      bool bret = false;
+      if (NULL != path
+          && NULL != fname_substr)
+      {
+        int64_t timestamp = tbsys::CTimeUtil::getTime();
+        const char *fpath_tmp = build_str("%s/%s%s.%ld.tmp", path, fname_substr, SCHEMA_SUFFIX, timestamp);
+        const char *fpath = build_str("%s/%s%s", path, fname_substr, SCHEMA_SUFFIX);
+
+        int64_t buf_size = OB_MAX_PACKET_LENGTH;
+        int64_t buf_pos = 0;
+        char *buffer = (char*)ob_malloc(buf_size, ObModIds::OB_UPS_SSTABLE_MGR);
+
+        ObFileAppender file;
+        bool dio = true;
+        bool is_create = true;
+        bool is_trunc = true;
+        int ret = file.open(ObString(static_cast<int32_t>(strlen(fpath_tmp)),
+                                     static_cast<int32_t>(strlen(fpath_tmp)),
+                                     const_cast<char*>(fpath_tmp)),
+                            dio, is_create, is_trunc);
+
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "open file [%s] for dump schema fail ret=%d", fpath_tmp, ret);
+        }
+        else if (NULL == buffer)
+        {
+          TBSYS_LOG(ERROR, "alloc tmp buffer for dump schema fail");
+        }
+        else if (NULL == sm)
+        {
+          TBSYS_LOG(WARN, "get schema mgr fail");
+        }
+        else if (OB_SUCCESS != (ret = sm->serialize(buffer, buf_size, buf_pos)))
+        {
+          TBSYS_LOG(WARN, "serialize schema manager fail ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = file.append(buffer, buf_pos, true)))
+        {
+          TBSYS_LOG(WARN, "append buffer to file fail ret=%d buffer=%p size=%ld", ret, buffer, buf_pos);
+        }
+        else
+        {
+          file.close();
+          if (0 != rename(fpath_tmp, fpath))
+          {
+            TBSYS_LOG(WARN, "rename [%s] to [%s] fail errno=%u", fpath_tmp, fpath, errno);
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "build schema file rename from [%s] to [%s] succ", fpath_tmp, fpath);
+            bret = true;
+          }
+        }
+
+        if (NULL != buffer)
+        {
+          ob_free(buffer);
+          buffer = NULL;
+        }
+      }
+      return bret;
+    }
+
+    int SSTableMgr::add_sstable(const uint64_t sstable_id, const uint64_t clog_id, const int64_t time_stamp,
+                                IRowIterator &iter, const CommonSchemaManager *sm)
     {
       int ret = OB_SUCCESS;
       SSTableInfo *sstable_info = NULL;
@@ -904,7 +1021,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid param sstable_id=%lu clog_id=%lu", sstable_id, clog_id);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (sstable_info = sstable_allocator_.allocate()))
+      else if (NULL == (sstable_info = sstable_allocator_.alloc()))
       {
         TBSYS_LOG(WARN, "allocate sstable_info fail sstable_id=%lu", sstable_id);
         ret = OB_ERROR;
@@ -926,7 +1043,7 @@ namespace oceanbase
           bool remove_sstable_file = true;
           erase_sstable(sstable_id, remove_sstable_file);
         }
-        if (!build_multi_sstable_file_(store_list, *sstable_info, time_stamp, iter))
+        if (!build_multi_sstable_file_(store_list, *sstable_info, time_stamp, iter, sm))
         {
           TBSYS_LOG(WARN, "no valid sstable file has been build sstable_id=%lu", sstable_id);
           ret = OB_ERROR;
@@ -950,7 +1067,7 @@ namespace oceanbase
       if (OB_SUCCESS != ret
           && NULL != sstable_info)
       {
-        sstable_allocator_.deallocate(sstable_info);
+        sstable_allocator_.free(sstable_info);
       }
       return ret;
     }
@@ -981,7 +1098,7 @@ namespace oceanbase
           }
           if (0 == sstable_info->dec_ref_cnt())
           {
-            sstable_allocator_.deallocate(sstable_info);
+            sstable_allocator_.free(sstable_info);
             TBSYS_LOG(INFO, "erase sstable succ sstable_id=%lu", sstable_id);
           }
         }
@@ -1019,7 +1136,7 @@ namespace oceanbase
               {
                 sstable_info_map_.erase(sstable_id);
                 deleted_list.push_back(sstable_id);
-                sstable_allocator_.deallocate(sstable_info);
+                sstable_allocator_.free(sstable_info);
               }
             }
           }
@@ -1159,11 +1276,13 @@ namespace oceanbase
         SSTableID range_end = master_end;
         if ((range_start.major_version + max_fill_major_num) <= range_end.major_version)
         {
-          range_start.major_version = range_end.major_version - max_fill_major_num + 1;
+          //range_start.major_version = range_end.major_version - max_fill_major_num + 1;
+          range_start.id = 0;
+          range_start.id = ((range_end.major_version - max_fill_major_num + 1) << SSTableID::MINOR_VERSION_BIT);
           range_start.minor_version_start = 0;
           range_start.minor_version_end = 0;
         }
-        
+
         ObList<SSTableInfo*> list2fill;
         SSTableInfoMap::iterator iter;
         map_lock_.rdlock();
@@ -1215,8 +1334,8 @@ namespace oceanbase
               path = build_str("%s/%s", cur_dir, path);
             }
             const char *name = build_str("%s%s", sstable_info->get_fname_substr(), SSTABLE_SUFFIX);
-            sst_file_info.path.assign_ptr(const_cast<char*>(path), (NULL == path) ? 0 : strlen(path) + 1);
-            sst_file_info.name.assign_ptr(const_cast<char*>(name), (NULL == name) ? 0 : strlen(name) + 1);
+            sst_file_info.path.assign_ptr(const_cast<char*>(path), (NULL == path) ? 0 : static_cast<int32_t>(strlen(path) + 1));
+            sst_file_info.name.assign_ptr(const_cast<char*>(name), (NULL == name) ? 0 : static_cast<int32_t>(strlen(name) + 1));
             if (NULL == path || NULL == name
                 || OB_SUCCESS != (ret = fetch_param.add_sst_file_info(sst_file_info)))
             {
@@ -1231,6 +1350,8 @@ namespace oceanbase
             }
           }
         }
+        map_lock_.unlock();
+
         if (OB_SUCCESS == ret && 0 != add_succ_num)
         {
           fetch_param.fetch_sstable_ = true;
@@ -1240,9 +1361,6 @@ namespace oceanbase
         {
           fetch_param.min_log_id_ = log_id;
         }
-
-        map_lock_.unlock();
-
       }
       if (NULL != cur_dir)
       {
@@ -1284,12 +1402,13 @@ namespace oceanbase
               TBSYS_LOG(WARN, "fname=[%s/%s] trans to sstable_id fail", path, dir_iter->d_name);
               continue;
             }
-            if (!check_sstable_(dir_iter->d_name))
+            if (!check_sstable_(fpath, NULL))
             {
               TBSYS_LOG(WARN, "fpath=[%s] do not pass sstable check, will not load it", fpath);
               continue;
             }
-            add_sstable_file_(sstable_id, clog_id, store_handle);
+            bool invoke_callback = true;
+            add_sstable_file_(sstable_id, clog_id, store_handle, invoke_callback);
           }
           closedir(dd);
           TBSYS_LOG(INFO, "load dir path=[%s] store_handle=%lu timeu=%ld",
@@ -1308,16 +1427,15 @@ namespace oceanbase
       return bret;
     }
 
-    bool SSTableMgr::check_sstable_(const char *fpath)
+    bool SSTableMgr::check_sstable_(const char *fpath, uint64_t *sstable_checksum)
     {
-      bool bret = false;
-      //TODO
-      UNUSED(fpath);
-      bret = true;
-      return bret;
+      return sstable::ObSSTableReader::check_sstable(fpath, sstable_checksum);
     }
 
-    void SSTableMgr::add_sstable_file_(const uint64_t sstable_id, const uint64_t clog_id, const StoreMgr::Handle store_handle)
+    void SSTableMgr::add_sstable_file_(const uint64_t sstable_id,
+                                      const uint64_t clog_id,
+                                      const StoreMgr::Handle store_handle,
+                                      const bool invoke_callback)
     {
       bool add_succ = false;
       SSTableInfo *sstable_info = NULL;
@@ -1331,7 +1449,7 @@ namespace oceanbase
       else if (hash::HASH_NOT_EXIST == hash_ret)
       {
         int tmp_ret = OB_SUCCESS;
-        if (NULL == (sstable_info = sstable_allocator_.allocate()))
+        if (NULL == (sstable_info = sstable_allocator_.alloc()))
         {
           TBSYS_LOG(WARN, "allocate sstable_info fail sstable_id=%lu fname=[%s] store_handle=%lu",
                     sstable_id, sstable_id2str(sstable_id, clog_id), store_handle);
@@ -1358,11 +1476,12 @@ namespace oceanbase
         if (!add_succ
             && NULL != sstable_info)
         {
-          sstable_allocator_.deallocate(sstable_info);
+          sstable_allocator_.free(sstable_info);
         }
       }
       map_lock_.unlock();
-      if (add_succ)
+      if (add_succ
+          && invoke_callback)
       {
         add_sstable_callback_(sstable_id);
       }
@@ -1376,11 +1495,7 @@ namespace oceanbase
         ISSTableObserver *cb = *iter;
         if (NULL != cb)
         {
-          if (OB_SUCCESS != cb->add_sstable(sstable_id))
-          {
-            bool remove_sstable_file = false;
-            erase_sstable(sstable_id, remove_sstable_file);
-          }
+          cb->add_sstable(sstable_id);
         }
       }
     }
@@ -1452,6 +1567,272 @@ namespace oceanbase
       return ret;
     }
 
+    int SSTableMgr::load_sstable_bypass(const uint64_t major_version,
+                                        const uint64_t minor_version_start,
+                                        const uint64_t minor_version_end,
+                                        const uint64_t clog_id,
+                                        ObList<uint64_t> &table_list,
+                                        uint64_t &checksum)
+    {
+      int ret = OB_SUCCESS;
+      ObList<StoreMgr::Handle> store_list;
+      table_list.clear();
+      CharArena allocator;
+      ObList<LoadBypassInfo*> info_list;
+      uint64_t tmp_checksum = checksum;
+
+      int64_t timeu = tbsys::CTimeUtil::getTime();
+      if (OB_SUCCESS != (ret = store_mgr_.get_all_valid_stores(store_list)))
+      {
+        TBSYS_LOG(WARN, "get all valid stores fail ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = prepare_load_info_(store_list, allocator, info_list)))
+      {
+        TBSYS_LOG(WARN, "prepare load fail ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = info_list_uniq_(allocator, info_list)))
+      {
+        TBSYS_LOG(WARN, "info list uniq fail ret=%d", ret);
+      }
+      else
+      {
+        load_list_bypass_(info_list, major_version, minor_version_start, minor_version_end, clog_id, table_list, tmp_checksum);
+      }
+
+      if (0 == table_list.size())
+      {
+        ret = OB_ENTRY_NOT_EXIST;
+      }
+      else
+      {
+        checksum = tmp_checksum;
+      }
+      TBSYS_LOG(INFO, "load sstable bypass ret=%d loaded_num=%ld checksum=%lu timeu=%ld",
+                ret, table_list.size(), checksum, tbsys::CTimeUtil::getTime() - timeu);
+      return ret;
+    }
+
+    int SSTableMgr::prepare_load_info_(const ObList<StoreMgr::Handle> &store_list,
+                                      CharArena &allocator,
+                                      ObList<LoadBypassInfo*> &info_list)
+
+    {
+      int ret = OB_SUCCESS;
+      info_list.clear();
+      ObList<StoreMgr::Handle>::const_iterator iter;
+      for (iter = store_list.begin(); iter != store_list.end(); iter++)
+      {
+        const char *store_path = NULL;
+        const char *bypass_path = NULL;
+        DIR *dd = NULL;
+        if (NULL == (store_path = store_mgr_.get_dir(*iter)))
+        {
+          TBSYS_LOG(WARN, "get store dir fail, store_handle=%lu", *iter);
+        }
+        else if (NULL == (bypass_path = build_str("%s/%s", store_path, BYPASS_DIR)))
+        {
+          TBSYS_LOG(WARN, "get bypass dir fail, bypass_path=[%s/%s]", store_path, BYPASS_DIR);
+        }
+        else if (NULL == (dd = opendir(bypass_path)))
+        {
+          TBSYS_LOG(WARN, "open dir fail bypass_path=[%s] errno=%u", bypass_path, errno);
+        }
+        else
+        {
+          struct dirent* dir_iter = NULL;
+          while (NULL != (dir_iter = readdir(dd))
+                && NULL != dir_iter->d_name)
+          {
+            LoadBypassInfo *info = (LoadBypassInfo*)allocator.alloc(sizeof(LoadBypassInfo));
+            if (NULL == info)
+            {
+              TBSYS_LOG(WARN, "alloc load bypass info fail");
+              break;
+            }
+            else if (OB_MAX_FILE_NAME_LENGTH <= snprintf(info->fname, OB_MAX_FILE_NAME_LENGTH, "%s", dir_iter->d_name))
+            {
+              TBSYS_LOG(WARN, "file name too long will not load [%s]", dir_iter->d_name);
+            }
+            else
+            {
+              info->store_handle = *iter;
+              info_list.push_back(info);
+            }
+          }
+          closedir(dd);
+        }
+      }
+      if (0 >= info_list.size())
+      {
+        ret = OB_ENTRY_NOT_EXIST;
+      }
+      return ret;
+    }
+
+    int SSTableMgr::info_list_uniq_(CharArena &allocator,
+                                    ObList<LoadBypassInfo*> &info_list)
+    {
+      int ret = OB_SUCCESS;
+      LoadBypassInfo **sort_array = (LoadBypassInfo**)allocator.alloc(sizeof(LoadBypassInfo*) * info_list.size());
+      if (NULL == sort_array)
+      {
+        TBSYS_LOG(WARN, "alloc array for sort fail info_num=%ld", info_list.size());
+        ret = OB_MEM_OVERFLOW;
+      }
+      else
+      {
+        int64_t counter = 0;
+        ObList<LoadBypassInfo*>::iterator iter;
+        for (iter = info_list.begin(); counter < info_list.size() && iter != info_list.end(); iter++)
+        {
+          sort_array[counter++] = *iter;
+        }
+        std::sort(sort_array, sort_array + counter, LoadBypassInfo::cmp);
+        info_list.clear();
+        LoadBypassInfo *prev = NULL;
+        int64_t same_counter = 0;
+        for (int64_t i = 0; i < counter; i++)
+        {
+          if (NULL != prev
+              && *prev == *sort_array[i])
+          {
+            same_counter += 1;
+            continue;
+          }
+          else
+          {
+            if (1 == same_counter)
+            {
+              info_list.push_back(prev);
+            }
+            else
+            {
+              if (NULL != prev)
+              {
+                TBSYS_LOG(INFO, "[%s] same_count=%ld will not load", prev->fname, same_counter);
+              }
+            }
+            prev = sort_array[i];
+            same_counter = 1;
+          }
+        }
+        if (NULL != prev)
+        {
+          if (1 == same_counter)
+          {
+            info_list.push_back(prev);
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "[%s] same_count=%ld will not load", prev->fname, same_counter);
+          }
+        }
+        if (0 >= info_list.size())
+        {
+          ret = OB_ENTRY_NOT_EXIST;
+        }
+      }
+      return ret;
+    }
+
+    void SSTableMgr::load_list_bypass_(const ObList<LoadBypassInfo*> &info_list,
+                                      const uint64_t major_version,
+                                      const uint64_t minor_version_start,
+                                      const uint64_t minor_version_end,
+                                      const uint64_t clog_id,
+                                      ObList<uint64_t> &sstable_list,
+                                      uint64_t &checksum)
+    {
+      const char *store_path = NULL;
+      const char *bypass_path = NULL;
+      int64_t timeu = tbsys::CTimeUtil::getTime();
+      uint64_t cur_minor_version = minor_version_start;
+      ObList<LoadBypassInfo*>::const_iterator iter;
+      for (iter = info_list.begin(); cur_minor_version <= minor_version_end && iter != info_list.end(); iter++)
+      {
+        if (NULL == *iter)
+        {
+          TBSYS_LOG(WARN, "load bypass info null pointer minor_version_start=%lu cur_minor_version=%lu",
+                    minor_version_start, cur_minor_version);
+        }
+        else if (NULL == (store_path = store_mgr_.get_dir((*iter)->store_handle)))
+        {
+          TBSYS_LOG(WARN, "get store dir fail, store_handle=%lu", (*iter)->store_handle);
+        }
+        else if (NULL == (bypass_path = build_str("%s/%s", store_path, BYPASS_DIR)))
+        {
+          TBSYS_LOG(WARN, "get bypass dir fail, bypass_path=[%s/%s]", store_path, BYPASS_DIR);
+        }
+        else
+        {
+          uint64_t sstable_id = SSTableID::get_id(major_version, cur_minor_version, cur_minor_version);
+          const char *bypass_fpath = build_str("%s/%s/%s", store_path, BYPASS_DIR, (*iter)->fname);
+          const char *store_fpath = build_str("%s/%s%s", store_path, sstable_id2str(sstable_id, clog_id), SSTABLE_SUFFIX);
+          uint64_t sstable_checksum = 0;
+          if (NULL == bypass_fpath
+              || NULL == store_fpath)
+          {
+            TBSYS_LOG(WARN, "build entire fpath fail fname=[%s] bypass_path=[%s/%s] store_path=[%s]",
+                      (*iter)->fname, store_path, BYPASS_DIR, store_path);
+          }
+          else if (!StoreMgr::is_rfile(bypass_fpath)
+                  || !StoreMgr::is_access(bypass_fpath)
+                  || !check_sstable_(bypass_fpath, &sstable_checksum))
+          {
+            TBSYS_LOG(INFO, "fpath=[%s] do not pass sstable check, will not load it", bypass_fpath);
+          }
+          else if (0 != rename(bypass_fpath, store_fpath))
+          {
+            TBSYS_LOG(WARN, "rename from [%s] to [%s] fail, errno=%u", bypass_fpath, store_fpath, errno);
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "rename from [%s] to [%s] succ", bypass_fpath, store_fpath);
+            if (0 != sstable_list.push_back(sstable_id))
+            {
+              TBSYS_LOG(WARN, "push to sstable list fail %s", SSTableID::log_str(sstable_id));
+            }
+            else
+            {
+              bool invoke_callback = false;
+              add_sstable_file_(sstable_id, clog_id, (*iter)->store_handle, invoke_callback);
+              cur_minor_version++;
+              checksum = ob_crc64(checksum, &sstable_checksum, sizeof(sstable_checksum));
+            }
+          }
+        }
+      }
+      TBSYS_LOG(INFO, "load sstable_num=%ld timeu=%ld", sstable_list.size(), tbsys::CTimeUtil::getTime() - timeu);
+    }
+
+    uint64_t SSTableMgr::get_last_major_frozen_clog_file_id()
+    {
+      uint64_t last_major_version = 0;
+      uint64_t last_frozen_file_id = 0;
+      SSTableInfoMap::iterator iter;
+      map_lock_.rdlock();
+      for (iter = sstable_info_map_.begin(); iter != sstable_info_map_.end(); iter++)
+      {
+        SSTableInfo *sstable_info = iter->second;
+        if (NULL != sstable_info)
+        {
+          uint64_t sstable_id = sstable_info->get_sstable_id();
+          last_major_version = std::max(last_major_version, SSTableID::get_major_version(sstable_id));
+        }
+      }
+      for (iter = sstable_info_map_.begin(); iter != sstable_info_map_.end(); iter++)
+      {
+        SSTableInfo *sstable_info = iter->second;
+        if (NULL != sstable_info)
+        {
+          if (SSTableID::get_major_version(sstable_info->get_sstable_id()) < last_major_version)
+            last_frozen_file_id = std::max(last_frozen_file_id, sstable_info->get_clog_id());
+        }
+      }
+      map_lock_.unlock();
+      return last_frozen_file_id;
+    }
+
     const char *SSTableMgr::build_str(const char *fmt, ...)
     {
       char *ret = NULL;
@@ -1460,11 +1841,13 @@ namespace oceanbase
       char *fpath = fpaths[i++ % 2];
       va_list args;
       va_start(args, fmt);
+      TBSYS_LOG(DEBUG, "build_str prev [%ld][%s]", i - 1, fpath);
       if (StoreMgr::MAX_DIR_NAME_LENGTH > vsnprintf(fpath, StoreMgr::MAX_DIR_NAME_LENGTH, fmt, args))
       {
         ret = fpath;
       }
       va_end(args);
+      TBSYS_LOG(DEBUG, "build_str cur [%ld][%s] ret=%p", i - 1, fpath, ret);
       return ret;
     }
 
@@ -1507,7 +1890,7 @@ namespace oceanbase
           {
             while (next && *next)
             {
-              if (isdigit(*next)) 
+              if (isdigit(*next))
               {
                 break;
               }
@@ -1519,9 +1902,11 @@ namespace oceanbase
         if (bret)
         {
           SSTableID sst_id;
-          sst_id.major_version = result[0];
-          sst_id.minor_version_start = result[1];
-          sst_id.minor_version_end = result[2];
+          //sst_id.major_version = result[0];
+          sst_id.id = 0;
+          sst_id.id = (result[0] << SSTableID::MINOR_VERSION_BIT);
+          sst_id.minor_version_start = static_cast<uint16_t>(result[1]);
+          sst_id.minor_version_end = static_cast<uint16_t>(result[2]);
           sstable_id = sst_id.id;
           clog_id = result[3];
         }
@@ -1585,13 +1970,95 @@ namespace oceanbase
         SSTableInfo *sstable_info = store_info->get_sstable_info();
         if (0 == store_info->dec_ref_cnt())
         {
-          store_allocator_.deallocate(store_info);
+          store_allocator_.free(store_info);
         }
         if (0 == sstable_info->dec_ref_cnt())
         {
-          sstable_allocator_.deallocate(sstable_info);
+          sstable_allocator_.free(sstable_info);
         }
         map_lock_.unlock();
+      }
+      return ret;
+    }
+
+    int SSTableMgr::get_schema(const uint64_t sstable_id, CommonSchemaManagerWrapper &sm)
+    {
+      int ret = OB_SUCCESS;
+      const IFileInfo *file_info = NULL;
+      const StoreInfo *store_info = NULL;
+      const SSTableInfo *sstable_info = NULL;
+      const char *path = NULL;
+      const char *fname_substr = NULL;
+      const char *fpath = NULL;
+      ObFileReader file;
+      bool dio = true;
+      struct stat st;
+      ObFileBuffer buffer;
+      int64_t ret_size = 0;
+      if (NULL == (file_info = get_fileinfo(sstable_id)))
+      {
+        TBSYS_LOG(WARN, "get file info of %s fail", SSTableID::log_str(sstable_id));
+        ret = OB_ERROR;
+      }
+      else if (NULL == (store_info = dynamic_cast<const StoreInfo*>(file_info)))
+      {
+        TBSYS_LOG(WARN, "cast from file_info=%p to store_info fail", file_info);
+        ret = OB_ERROR;
+      }
+      else if (NULL == (sstable_info = store_info->get_sstable_info()))
+      {
+        TBSYS_LOG(WARN, "get sstable info from store info fail");
+        ret = OB_ERROR;
+      }
+      else if (NULL == (path = store_info->get_dir()))
+      {
+        TBSYS_LOG(WARN, "get dir from store info fail");
+        ret = OB_ERROR;
+      }
+      else if (NULL == (fname_substr = sstable_id2str(sstable_id, sstable_info->get_clog_id())))
+      {
+        TBSYS_LOG(WARN, "build sstable id to string fail %s clog_id=%ld",
+                  SSTableID::log_str(sstable_id), sstable_info->get_clog_id());
+        ret = OB_ERROR;
+      }
+      else if (NULL == (fpath = build_str("%s/%s%s", path, fname_substr, SCHEMA_SUFFIX)))
+      {
+        TBSYS_LOG(WARN, "build schema fpath fail path=[%s] fname_substr=[%s]", path, fname_substr);
+        ret = OB_ERROR;
+      }
+      else if (OB_SUCCESS != (ret = file.open(ObString(static_cast<int32_t>(strlen(fpath)),
+                                                       static_cast<int32_t>(strlen(fpath)), const_cast<char*>(fpath)), dio)))
+      {
+        TBSYS_LOG(WARN, "open file [%s] fail ret=%d", fpath, ret);
+      }
+      else if (0 != stat(fpath, &st))
+      {
+        TBSYS_LOG(WARN, "stat file [%s] fail errno=%u", fpath, errno);
+        ret = OB_ERROR;
+      }
+      else if (OB_SUCCESS != (ret = file.pread(st.st_size, 0, buffer, ret_size)))
+      {
+        TBSYS_LOG(WARN, "pread file [%s] fail ret=%d size=%ld", fpath, ret, st.st_size);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "read from schema file [%s] succ, file_size=%ld ret_size=%ld", fpath, st.st_size, ret_size);
+      }
+
+      if (NULL != file_info)
+      {
+        revert_fileinfo(file_info);
+        file_info =  NULL;
+      }
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(INFO, "read from schema file fail, will get the local latest version");
+        ret = ObUpdateServerMain::get_instance()->get_update_server().get_table_mgr().get_schema_mgr().get_schema_mgr(sm);
+      }
+      else
+      {
+        int64_t pos = 0;
+        sm.deserialize(buffer.get_buffer() + buffer.get_base_pos(), ret_size, pos);
       }
       return ret;
     }
@@ -1614,6 +2081,3 @@ namespace oceanbase
     }
   }
 }
-
-
-

@@ -26,7 +26,7 @@ namespace oceanbase
       UPS_SLAVE = 0,       ///< slave
       UPS_MASTER = 1,      ///< the master
     };
-    
+
     enum ObServerType
     {
       CHUNK_SERVER = 100,
@@ -50,12 +50,12 @@ namespace oceanbase
     };
 
     inline ObUpsInfo::ObUpsInfo()
-      :inner_port_(0), stat_(UPS_SLAVE), 
+      :inner_port_(0), stat_(UPS_SLAVE),
        ms_read_percentage_(0), cs_read_percentage_(0),
        reserve2_(0), reserve3_(0)
     {
     }
-    
+
     inline int8_t ObUpsInfo::get_read_percentage(const ObServerType type/*= MERGE_SERVER*/) const
     {
       int8_t percentage = 0;
@@ -82,7 +82,7 @@ namespace oceanbase
 
     struct ObUpsList
     {
-      static const int32_t MAX_UPS_COUNT = 5;
+      static const int32_t MAX_UPS_COUNT = 8;
 
       ObUpsInfo ups_array_[MAX_UPS_COUNT];
       int32_t ups_count_;
@@ -96,7 +96,7 @@ namespace oceanbase
       // must deserializ at first when using this interface
       // if type not in (ObServerType) return 0
       inline int32_t get_sum_percentage(const ObServerType type = MERGE_SERVER) const;
-      
+
       int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
       int deserialize(const char* buf, const int64_t buf_len, int64_t& pos);
       void print() const;

@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation. 
  *
- * check_sum.h for ...
+ * check_sum.h is for what ...
  *
  * Authors:
- *   fanggang <fanggang@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef OCEANBASE_COMMON_CHECKSUM_H_
@@ -181,4 +179,3 @@ namespace oceanbase
 } 
 
 #endif /* OCEANBASE_COMMON_CHECKSUM_H_ */
-

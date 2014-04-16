@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_packet_queue.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
 #include "ob_packet_queue.h"
 
 namespace oceanbase
@@ -50,7 +35,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObPacketQueue::pop_packets(tbnet::Packet** packet_arr, const int64_t ary_size, int64_t& ret_size)
+    int ObPacketQueue::pop_packets(ObPacket** packet_arr, const int64_t ary_size, int64_t& ret_size)
     {
       int err = OB_SUCCESS;
       ThreadSpecificBuffer::Buffer* tb = NULL;
@@ -90,7 +75,7 @@ namespace oceanbase
           {
             if (0 == ret_size)
             {
-              TBSYS_LOG(ERROR, "the thread buffer is too small, packet_size=%ld, buffer_size=%ld",
+              TBSYS_LOG(ERROR, "the thread buffer is too small, packet_size=%ld, buffer_size=%d",
                   total_size, tb->remain());
               // discard packet
               ring_buffer_.pop_task(head_);
@@ -126,7 +111,7 @@ namespace oceanbase
               TBSYS_LOG(ERROR, "failed to pop task, err=%d", err);
             }
 
-            tb->advance(total_size);
+            tb->advance(static_cast<int32_t>(total_size));
             ++ret_size;
 
           }
@@ -245,12 +230,12 @@ namespace oceanbase
       }
     }
 
-    int ObPacketQueue::size()
+    int ObPacketQueue::size() const
     {
       return size_;
     }
 
-    bool ObPacketQueue::empty()
+    bool ObPacketQueue::empty() const
     {
       return (size_ == 0);
     }
@@ -283,7 +268,7 @@ namespace oceanbase
 
       while (head_ != NULL)
       {
-        int64_t t = head_->getExpireTime();
+        int64_t t = head_->get_expire_time();
         if (t == 0 || t >= now) break;
         if (tail == NULL)
         {
@@ -291,7 +276,7 @@ namespace oceanbase
         }
         else
         {
-          tail->_next = head_; 
+          tail->_next = head_;
         }
         tail = head_;
 
@@ -319,4 +304,3 @@ namespace oceanbase
 
   } /* common */
 } /* oceanbase */
-

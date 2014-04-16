@@ -1,22 +1,7 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_timer.cpp for ...
- *
- * Authors:
- *   maoqi <maoqi@taobao.com>
- *
- */
 #include "common/ob_timer.h"
-namespace oceanbase 
+namespace oceanbase
 {
-  namespace common 
+  namespace common
   {
     using namespace tbutil;
     int ObTimer::init()
@@ -64,12 +49,14 @@ namespace oceanbase
         tid_ = 0;
       }
     }
-    
+
     int ObTimer::schedule(ObTimerTask& task,const int64_t delay,bool repeate /*=false*/)
     {
       int ret = OB_ERROR;
       if (delay < 0 || (tasks_num_ >= MAX_TASK_NUM) || !inited_ || destroyed_)
       {
+        TBSYS_LOG(WARN, "check schedule param failed:delay[%ld], task[%d], max[%d], init[%d], destroy[%d]",
+            delay, tasks_num_, MAX_TASK_NUM, inited_, destroyed_);
         ret = OB_ERROR;
       }
       else
@@ -79,10 +66,14 @@ namespace oceanbase
         ret = insert_token(Token(time,repeate ? delay : 0,&task));
         if ( OB_SUCCESS == ret )
         {
-          if (0 == wakeup_time_ || wakeup_time_ <= time)
+          if (0 == wakeup_time_ || wakeup_time_ >= time)
           {
             monitor_.notify();
           }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "insert token failed:ret[%d]", ret);
         }
       }
       return ret;
@@ -134,14 +125,8 @@ namespace oceanbase
 
         if (pos != -1)
         {
-          if (pos == tasks_num_ - 1)
-          {
-            //remove the last item
-          }
-          else
-          {
-            memmove(&tokens_[pos],&tokens_[pos + 1], tasks_num_ - pos - 1);
-          }
+          memmove(&tokens_[pos], &tokens_[pos + 1],
+                  sizeof (tokens_[0]) * (tasks_num_ - pos - 1));
           --tasks_num_;
         }
       }
@@ -210,7 +195,7 @@ namespace oceanbase
             }
           }
         }
-        if (token.task != NULL)
+        if (token.task != NULL && !destroyed_)
           token.task->runTimerTask();
       }
     }
@@ -224,4 +209,3 @@ namespace oceanbase
     }
   } /* common */
 } /* chunkserver */
-

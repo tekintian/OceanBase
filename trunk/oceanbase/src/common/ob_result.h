@@ -1,18 +1,14 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_result.h for ...
- *
- * Authors:
- *   daoan <daoan@taobao.com>
- *
- */
+/*===============================================================
+*   (C) 2007-2010 Taobao Inc.
+*   
+*   
+*   Version: 0.1 2010-09-26
+*   
+*   Authors:
+*          daoan(daoan@taobao.com)
+*   
+*
+================================================================*/
 #ifndef OCEANBASE_COMMON_OB_RESULT_H_
 #define OCEANBASE_COMMON_OB_RESULT_H_
 #include "ob_define.h"
@@ -72,4 +68,3 @@ namespace oceanbase
   }
 }
 #endif
-

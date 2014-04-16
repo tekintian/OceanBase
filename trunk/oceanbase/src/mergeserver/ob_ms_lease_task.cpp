@@ -1,18 +1,19 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_ms_lease_task.cpp for ...
+ *
+ * Version: 0.1: ob_ms_lease_task.h,v 0.1 2011/05/25 12:02:10 zhidong Exp $
  *
  * Authors:
- *   xielun <xielun.szd@taobao.com>
+ *   chuanhui <xielun.szd@taobao.com>
+ *     - some work details if you want
  *
  */
+
 #include "ob_ms_lease_task.h"
 #include "ob_merge_server_service.h"
 #include "common/ob_malloc.h"
@@ -57,7 +58,5 @@ void ObMergerLeaseTask::runTimerTask(void)
     TBSYS_LOG(DEBUG, "check merge server lease ok");
   }
 }
-
-
 
 

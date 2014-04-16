@@ -1,18 +1,21 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  * 
- * Version: $Id$
  *
- * file_utils.cpp for ...
+ * Version: $Id: file_utils.cpp,v 0.1 2010/07/22 16:58:07 duanfei Exp $
  *
  * Authors:
- *   qushan <qushan@taobao.com>
+ *   duanfei <duanfei@taobao.com>
+ *     - some work details if you want
+ *   Author Name ...
  *
  */
+
 #include <errno.h>
 #include "ob_define.h"
 #include "file_utils.h"
@@ -47,7 +50,7 @@ namespace oceanbase
         return -1;
       }
 
-      fd_ =::open (pathname, flags, mode);
+      fd_ =::open (pathname, static_cast<int32_t>(flags), mode);
       return fd_ < 0  ? -1 : fd_;
     }
 
@@ -58,7 +61,7 @@ namespace oceanbase
         return -1;
       }
 
-      fd_ =::open (pathname, flags);
+      fd_ =::open (pathname, static_cast<int32_t>(flags));
       return fd_ < 0  ? -1 : fd_;
     }
 
@@ -73,7 +76,7 @@ namespace oceanbase
 
     int64_t FileUtils::lseek (const int64_t offset, const int64_t whence)
     {
-      return::lseek (fd_, offset, whence);
+      return::lseek (fd_, offset, static_cast<int32_t>(whence));
     }
 
     int64_t FileUtils::read (char *data, const int64_t size)
@@ -178,6 +181,27 @@ namespace oceanbase
       return (::ftruncate(fd_, length));
     }
 
+    int64_t FileUtils::get_size()
+    {
+      int64_t size =0;
+      if (fd_ < 0)
+      {
+        size = -1;
+      }
+      else
+      {
+        struct stat st;
+        if (0 != (::fstat(fd_, &st)))
+        {
+          size = -1;
+        }
+        else
+        {
+          size = st.st_size;
+        }
+      }
+      return size;
+    }
+
   }//end namespace common
 }//end namespace oceanbase
-

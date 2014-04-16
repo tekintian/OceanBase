@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./ob_hashutils.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_hashutils.cpp / hash / common / Oceanbase
+ //
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ //
+ // Created on 2010-07-23 by Yubai (yubai.lk@taobao.com)
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ //
+ // Change Log
+ //
+////====================================================================
+
 #ifndef  OCEANBASE_COMMON_HASH_HASHUTILS_H_
 #define  OCEANBASE_COMMON_HASH_HASHUTILS_H_
 #include <stdlib.h>
@@ -27,6 +31,8 @@
 #include "common/murmur_hash.h"
 #include "common/ob_string.h"
 #include "common/ob_malloc.h"
+#include "common/ob_spin_rwlock.h"
+#include "common/utility.h"
 
 #define HASH_FATAL    ERROR
 #define HASH_WARNING  WARN
@@ -248,6 +254,72 @@ namespace oceanbase
           bool succ_;
       };
 
+      class SpinReadLocker
+      {
+        private:
+          SpinReadLocker() {};
+        public:
+          explicit SpinReadLocker(SpinRWLock &rwlock) : succ_(false), rwlock_(NULL)
+          {
+            if (0 != rwlock.rdlock())
+            {
+              HASH_WRITE_LOG(HASH_WARNING, "rdlock rwlock fail errno=%u", errno);
+            }
+            else
+            {
+              rwlock_ = &rwlock;
+              succ_ = true;
+            }
+          };
+          ~SpinReadLocker()
+          {
+            if (NULL != rwlock_)
+            {
+              rwlock_->unlock();
+            }
+          };
+          bool lock_succ()
+          {
+            return succ_;
+          };
+        private:
+          bool succ_;
+          SpinRWLock *rwlock_;
+      };
+
+      class SpinWriteLocker
+      {
+        private:
+          SpinWriteLocker() {};
+        public:
+          explicit SpinWriteLocker(SpinRWLock &rwlock) : succ_(false), rwlock_(NULL)
+          {
+            if (0 != rwlock.wrlock())
+            {
+              HASH_WRITE_LOG(HASH_WARNING, "wrlock wrlock fail errno=%u", errno);
+            }
+            else
+            {
+              rwlock_ = &rwlock;
+              succ_ = true;
+            }
+          };
+          ~SpinWriteLocker()
+          {
+            if (NULL != rwlock_)
+            {
+              rwlock_->unlock();
+            }
+          };
+          bool lock_succ()
+          {
+            return succ_;
+          };
+        private:
+          bool succ_;
+          SpinRWLock *rwlock_;
+      };
+
       class SpinIniter
       {
         private:
@@ -398,6 +470,16 @@ namespace oceanbase
         typedef NWaiter<lock_type> cond_waiter;
         typedef NBroadCaster cond_broadcaster;
       };
+      struct SpinReadWriteDefendMode
+      {
+        typedef SpinReadLocker readlocker;
+        typedef SpinWriteLocker writelocker;
+        typedef SpinRWLock lock_type;
+        typedef NCond cond_type;
+        typedef NullIniter lock_initer;
+        typedef NWaiter<lock_type> cond_waiter;
+        typedef NBroadCaster cond_broadcaster;
+      };
       struct SpinMutexDefendMode
       {
         typedef NullLocker readlocker;
@@ -516,6 +598,15 @@ namespace oceanbase
           return (*a == *b);
         }
       };
+      template <>
+        struct equal_to <std::pair<int, uint32_t> >
+        {
+          bool operator()(const std::pair<int, uint32_t> &a, const std::pair<int, uint32_t> &b) const
+          {
+            return ((a.first == b.first) && (a.second == b.second));
+          }
+
+        };
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -556,7 +647,7 @@ namespace oceanbase
       {
         int64_t operator () (const char *key) const
         {
-          return murmurhash2(key, strlen(key), 0);
+          return murmurhash2(key, static_cast<int32_t>(strlen(key)), 0);
         };
       };
       template <>
@@ -564,9 +655,17 @@ namespace oceanbase
       {
         int64_t operator () (const char *key) const
         {
-          return murmurhash2(key, strlen(key), 0);
+          return murmurhash2(key, static_cast<int32_t>(strlen(key)), 0);
         };
       };
+      template <>
+        struct hash_func <std::pair<int, uint32_t> >
+        {
+          int64_t operator () (std::pair<int, uint32_t> key) const
+          {
+            return key.first + key.second;
+          };
+        };
       #define _HASH_FUNC_SPEC(type) \
       template <> \
       struct hash_func <type> \
@@ -636,6 +735,11 @@ namespace oceanbase
       };
 
       template <class Pair>
+      void copy(Pair &dest, const Pair &src, NormalPairTag)
+      {
+        dest = src;
+      }
+      template <class Pair>
       void copy(Pair &dest, const Pair &src)
       {
         do_copy(dest, src, typename PairTraits<Pair>::PairTag());
@@ -682,11 +786,11 @@ namespace oceanbase
 
       struct DefaultBigArrayAllocator
       {
-        void *alloc(const int64_t sz) { return ob_malloc(sz); }
-        void free(void *p) { ob_free(p); }
+        void *alloc(const int64_t sz) { return ob_tc_malloc(sz, ObModIds::OB_HASH_BUCKET); }
+        void free(void *p) { ob_tc_free(p, ObModIds::OB_HASH_BUCKET); }
       };
       template <class T, class Allocer = DefaultBigArrayAllocator>
-      class BigArray
+      class BigArrayTemp
       {
         class Block
         {
@@ -750,12 +854,12 @@ namespace oceanbase
         };
         public:
           typedef BigArrayTag ArrayTag;
-          typedef BigArray<T, Allocer> array_type;
+          typedef BigArrayTemp<T, Allocer> array_type;
         public:
-          BigArray() : blocks_(NULL), array_size_(0), blocks_num_(0)
+          BigArrayTemp() : blocks_(NULL), array_size_(0), blocks_num_(0)
           {
           };
-          ~BigArray()
+          ~BigArrayTemp()
           {
             destroy();
           };
@@ -867,6 +971,11 @@ namespace oceanbase
       };
 
       template <class T>
+      class BigArray : public BigArrayTemp<T, DefaultBigArrayAllocator>
+      {
+      };
+
+      template <class T>
       struct NormalPointer
       {
         typedef T* array_type;
@@ -906,30 +1015,32 @@ namespace oceanbase
         array = NULL;
       }
 
-      template <class Array>
-      int create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size)
+      template <class Array, class BucketAllocator>
+      int create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, BucketAllocator &alloc)
       {
-        return do_create(array, total_size, array_size, item_size, typename ArrayTraits<Array>::ArrayTag());
+        return do_create(array, total_size, array_size, item_size, typename ArrayTraits<Array>::ArrayTag(), alloc);
       }
 
-      template <class Array>
-      int do_create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, BigArrayTag)
+      template <class Array, class BucketAllocator>
+      int do_create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, BigArrayTag, BucketAllocator &alloc)
       {
         UNUSED(item_size);
+        UNUSED(alloc);
         return array.create(total_size, array_size);
       }
 
-      template <class Array>
-      int do_create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, NormalPointerTag)
+      template <class Array, class BucketAllocator>
+      int do_create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, NormalPointerTag, BucketAllocator &alloc)
       {
         UNUSED(array_size);
         int ret = 0;
-        if (NULL == (array = (Array)ob_malloc(total_size * item_size)))
+        if (NULL == (array = (Array)alloc.alloc(total_size * item_size)))
         {
           ret = -1;
         }
         else
         {
+          //BACKTRACE(WARN, total_size * item_size > 65536, "hashutil create init size=%ld", total_size * item_size);
           memset(array, 0, total_size * item_size);
         }
         return ret;
@@ -953,24 +1064,24 @@ namespace oceanbase
         return (NULL != array);
       }
 
-      template <class Array>
-      void destroy(Array &array)
+      template <class Array, class BucketAllocator>
+      void destroy(Array &array, BucketAllocator& alloc)
       {
-        return do_destroy(array, typename ArrayTraits<Array>::ArrayTag());
+        do_destroy(array, typename ArrayTraits<Array>::ArrayTag(), alloc);
       }
 
-      template <class Array>
-      void do_destroy(Array &array, BigArrayTag)
+      template <class Array, class BucketAllocator>
+      void do_destroy(Array &array, BigArrayTag, BucketAllocator &)
       {
         array.destroy();
       }
 
-      template <class Array>
-      void do_destroy(Array &array, NormalPointerTag)
+      template <class Array, class BucketAllocator>
+      void do_destroy(Array &array, NormalPointerTag, BucketAllocator &alloc)
       {
         if (NULL != array)
         {
-          ob_free(array);
+          alloc.free(array);
           array = NULL;
         }
       }
@@ -979,8 +1090,15 @@ namespace oceanbase
 
       struct DefaultSimpleAllocerAllocator
       {
-        void *alloc(const int64_t sz) { return ob_malloc(sz); }
-        void free(void *p) { ob_free(p); }
+        public:
+          DefaultSimpleAllocerAllocator(int32_t mod_id = ObModIds::OB_HASH_NODE)
+            :mod_id_(mod_id)
+          {
+          }
+          void *alloc(const int64_t sz) { return ob_tc_malloc(sz, mod_id_); }
+          void free(void *p) { ob_tc_free(p, mod_id_); }
+        private:
+          int32_t mod_id_;
       };
 
       template <class T, int32_t NODE_NUM>
@@ -1012,8 +1130,28 @@ namespace oceanbase
         Block *next;
       };
 
+      template <bool B, class T>
+      struct NodeNumTraits
+      {
+      };
+
+      template <class T>
+      struct NodeNumTraits<false, T>
+      {
+        static const int32_t NODE_NUM = (common::OB_TC_MALLOC_BLOCK_SIZE - 24/*=sizeof(SimpleAllocerBlock 's members except nodes_buffer)*/ - 128/*for robust*/)/(32/*sizeof(SimpleAllocerNode's members except data)*/+sizeof(T));
+      };
+
+      template <class T>
+      struct NodeNumTraits<true, T>
+      {
+        static const int32_t NODE_NUM = 1;
+      };
+
+#define IS_BIG_OBJ(T) \
+      ((common::OB_TC_MALLOC_BLOCK_SIZE - 24 - 128) < (32 + sizeof(T)))
+
       template <class T,
-               int32_t NODE_NUM = 1024,
+               int32_t NODE_NUM = NodeNumTraits<IS_BIG_OBJ(T), T>::NODE_NUM,
                class DefendMode = SpinMutexDefendMode,
                class Allocer = DefaultSimpleAllocerAllocator>
       class SimpleAllocer
@@ -1055,7 +1193,7 @@ namespace oceanbase
             block_list_head_ = NULL;
             free_list_head_ = NULL;
           };
-          T *allocate()
+          T *alloc()
           {
             T *ret = NULL;
             mutexlocker locker(lock_);
@@ -1088,9 +1226,12 @@ namespace oceanbase
                 }
                 else
                 {
-                  HASH_WRITE_LOG(HASH_DEBUG, "new succ block=%p block_size=%lu node_size=%lu type=[%s]",
-                                block, sizeof(Block), sizeof(Node), typeid(T).name());
-                  memset(block, 0, sizeof(Block));
+      // BACKTRACE(WARN, ((int64_t)sizeof(Block))>DEFAULT_BLOCK_SIZE,
+      // "hashutil alloc block=%ld node=%ld T=%ld N=%d",
+      //               sizeof(Block), sizeof(Node), sizeof(T), NODE_NUM);
+      //memset(block, 0, sizeof(Block));
+                  block->ref_cnt = 0;
+                  block->cur_pos = 0;
                   block->nodes = (Node*)(block->nodes_buffer);
                   block->next = block_list_head_;
                   block_list_head_ = block;
@@ -1110,7 +1251,7 @@ namespace oceanbase
             }
             return (new(ret) T());
           }
-          void deallocate(T *data)
+          void free(T *data)
           {
             mutexlocker locker(lock_);
             if (NULL == data)
@@ -1211,5 +1352,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_HASH_HASHUTILS_H_
-
-

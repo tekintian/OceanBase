@@ -1,24 +1,20 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_fileinfo_cache.cpp
+ * ob_fileinfo_cache.cpp for file info cache. 
  *
  * Authors:
- *     yubai <yubai.lk@taobao.com>
- * Changes: 
- *     huating <huating.zmq@taobao.com>
- *     qushan <qushan@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #include "common/ob_define.h"
 #include "sstable/ob_disk_path.h"
 #include "ob_fileinfo_cache.h"
+#include "ob_chunk_server_stat.h"
 
 namespace oceanbase
 {
@@ -43,6 +39,8 @@ namespace oceanbase
       if (-1 != other.fd_)
       {
         fd_ = dup(other.fd_);
+        std::swap(fd_, const_cast<FileInfo&>(other).fd_);
+        OB_STAT_INC(CHUNKSERVER, OPEN_FILE_COUNT);
       }
     }
 
@@ -76,6 +74,7 @@ namespace oceanbase
         TBSYS_LOG(INFO, "open file succ fd=%d sstable_filename=%s "
                         "sstable_id=%lu", 
                   fd_, sstable_fname, sstable_id);
+        OB_STAT_INC(CHUNKSERVER, OPEN_FILE_COUNT);
       }
 
       return ret;
@@ -87,6 +86,7 @@ namespace oceanbase
       {
         close(fd_);
         fd_ = -1;
+        OB_STAT_INC(CHUNKSERVER, CLOSE_FILE_COUNT);
       }
     }
 
@@ -134,10 +134,40 @@ namespace oceanbase
       return cache_.init(max_cache_num * KVCACHE_BLOCK_SIZE);
     };
 
+    int FileInfoCache::enlarg_cache_num(const int64_t max_cache_num)
+    {
+      return cache_.enlarge_total_size(max_cache_num * KVCACHE_BLOCK_SIZE);
+    }
+
     int FileInfoCache::destroy()
     {
       return cache_.destroy();
     };
+
+    const FileInfo *FileInfoCache::get_cache_fileinfo(const uint64_t sstable_id)
+    {
+      FileInfo *ret = NULL;
+      Handle tmp_handle;
+
+      if (OB_SUCCESS == cache_.get(sstable_id, ret, tmp_handle) && NULL != ret)
+      {
+        if (ret->get_fd() >= 0)
+        {
+          ret->set_cache_handle(tmp_handle);
+        }
+        else
+        {
+          /**
+           * got a file_info with invalid fd_, just skip it, and return 
+           * NULL file_info pointer 
+           */
+          cache_.revert(tmp_handle);
+          ret = NULL;
+        }      
+      }
+
+      return ret;
+    }
 
     const IFileInfo *FileInfoCache::get_fileinfo(const uint64_t sstable_id)
     {
@@ -151,6 +181,19 @@ namespace oceanbase
         if (OB_SUCCESS != (tmp_ret = file_info.init(sstable_id)))
         {
           TBSYS_LOG(WARN, "init file info fail sstable_id=%lu", sstable_id);
+          /**
+           * erase fake node in hash map added by kvcache get(), otherwise 
+           * the fake node can't be reused. 
+           * FIXME: if there are some threads are getting the same file 
+           * info concurrency, erasing the fake node will cause that the 
+           * other threads can't get this file info and wait timeout 
+           */
+          tmp_ret = cache_.erase(sstable_id);
+          if (OB_SUCCESS != tmp_ret)
+          {
+            TBSYS_LOG(WARN, "failed to delete fake file info, sstable_id=%lu, err=%d",
+                      sstable_id, tmp_ret);
+          }
           ret = NULL;
         }
         else
@@ -168,7 +211,19 @@ namespace oceanbase
 
       if (OB_SUCCESS == tmp_ret && NULL != ret)
       {
-        ret->set_cache_handle(tmp_handle);
+        if (ret->get_fd() >= 0)
+        {
+          ret->set_cache_handle(tmp_handle);
+        }
+        else
+        {
+          /**
+           * got a file_info with invalid fd_, just skip it, and return 
+           * NULL file_info pointer 
+           */
+          cache_.revert(tmp_handle);
+          ret = NULL;
+        }
       }
 
       return ret;

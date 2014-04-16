@@ -1,16 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_ring_buffer.cpp for ...
+ *
+ *
+ * Version: 0.1: ob_ring_buffer.cpp,v 0.1 2011/04/26 10:40:58 ruohai Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   ruohai <ruohai@taobao.com>
+ *     - modified by chuanhui <rizhao.ych@taobao.com>
  *
  */
 #include "ob_ring_buffer.h"
@@ -155,7 +156,7 @@ namespace oceanbase
           {
             RingTask task;
             task.magic = TASK_MAGIC_NUM;
-            task.size = task_len;
+            task.size = static_cast<int32_t>(task_len);
             task.block = block;
             ++(block->task_num);
             int64_t offset = get_offset_(queue_.versions[queue_.ring_tail_idx],
@@ -333,6 +334,7 @@ namespace oceanbase
       {
         block = (RingBlock*) ptr;
         block->magic = BLOCK_MAGIC_NUM;
+        block->task_num = 0;
         block->block_size = DEF_BLOCK_SIZE;
         block->data_size = 0;
         block->version = -1;
@@ -416,7 +418,7 @@ namespace oceanbase
           {
             if (next_task->size > buf_len)
             {
-              TBSYS_LOG(WARN, "buf is not enough, task_size=%ld, buf_len=%ld", next_task->size, buf_len);
+              TBSYS_LOG(WARN, "buf is not enough, task_size=%d, buf_len=%ld", next_task->size, buf_len);
               err = OB_NEED_RETRY;
             }
             else
@@ -627,4 +629,3 @@ namespace oceanbase
     }
   }
 }
-

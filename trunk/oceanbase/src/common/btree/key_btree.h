@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./key_btree.h for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #ifndef OCEANBASE_COMMON_BTREE_KEY_BTREE_H_
 #define OCEANBASE_COMMON_BTREE_KEY_BTREE_H_
 
@@ -67,7 +52,7 @@ namespace oceanbase
        * @param   overwrite 是否覆盖
        * @return  OK:     成功,  KEY_EXIST: key已经存在了
        */
-      int32_t put(const K &key, const V &value, const bool overwrite = false);
+      int32_t put(const K &key, const V &value, const bool overwrite = false, K **stored_key = NULL);
       int32_t put(const K &key, const V &value, V &old_value, const bool key_overwrite = false, const bool value_overwrite = true);
 
       /**
@@ -170,7 +155,7 @@ namespace oceanbase
     {
       tree_count_ = 1;
       // 引用计数一个int32_t
-      key_size_ = key_size + sizeof(int32_t);
+      key_size_ = static_cast<int32_t>(key_size + sizeof(int32_t));
       if (key_size_ > CONST_KEY_MAX_LENGTH)
         key_size_ = CONST_KEY_MAX_LENGTH;
       type_size_ = 0;
@@ -184,9 +169,10 @@ namespace oceanbase
       {
         key_allocator_ = NULL;
         key_compare_[0] = nokey_compare_func;
-        type_size_ = key_size_ - sizeof(int32_t);
+        type_size_ = static_cast<int32_t>(key_size_ - sizeof(int32_t));
         key_size_ = 0;
       }
+      set_write_lock_enable(true);
     }
 
     /**
@@ -259,19 +245,43 @@ namespace oceanbase
      * @return  true:   成功, false: 失败
      */
     template<class K, class V>
-    int32_t KeyBtree<K, V>::put(const K &key, const V &value, const bool overwrite)
+    int32_t KeyBtree<K, V>::put(const K &key, const V &value, const bool overwrite, K **stored_key)
     {
       BtreeWriteHandle handle;
       int32_t ret = get_write_handle(handle);
+      if (ERROR_CODE_OK != ret)
+      {
+        TBSYS_LOG(ERROR, "get_write_handle()=>%d", ret);
+      }
       if (ERROR_CODE_OK == ret)
       {
         // 分配内存
         char *pkey = set_key_to_buf(NULL, key);
-        // 插入一个key
-        ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), overwrite);
-        if (key_allocator_ && ret != ERROR_CODE_OK)
+        if (NULL == pkey) 
         {
-          key_allocator_->release(pkey);
+          TBSYS_LOG(ERROR, "alloc memory fail");
+          ret = ERROR_CODE_ALLOC_FAIL;
+        }
+        else
+        {
+          // 插入一个key
+          ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), overwrite);
+          if (ERROR_CODE_OK != ret)
+          {
+            if (ERROR_CODE_KEY_REPEAT != ret)
+            {
+              TBSYS_LOG(ERROR, "put_pair()=>%d", ret);
+            }
+          }
+          if (key_allocator_ && ret != ERROR_CODE_OK)
+          {
+            key_allocator_->release(pkey);
+          }
+          if (ERROR_CODE_OK == ret
+              && NULL != stored_key)
+          {
+            *stored_key = reinterpret_cast<K*>(pkey + sizeof(int32_t));
+          }
         }
       }
       return ret;
@@ -286,30 +296,38 @@ namespace oceanbase
       {
         // 分配内存
         char *pkey = set_key_to_buf(NULL, key);
-        // 插入一个key
-        ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), value_overwrite);
-        old_value = (V)(long)handle.get_old_value();
-        if (ERROR_CODE_OK == ret)
+        if (NULL == pkey) 
         {
-          // 覆盖旧Key
-          char *ptr = handle.get_old_key();
-
-          if (key_overwrite && ptr)
+          TBSYS_LOG(ERROR, "alloc memory fail");
+          ret = ERROR_CODE_ALLOC_FAIL;
+        }
+        else
+        {
+          // 插入一个key
+          ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), value_overwrite);
+          old_value = (V)(long)handle.get_old_value();
+          if (ERROR_CODE_OK == ret)
           {
-            if (key_allocator_)
+            // 覆盖旧Key
+            char *ptr = handle.get_old_key();
+
+            if (key_overwrite && ptr)
             {
-              K *pk = reinterpret_cast<K *>(const_cast<char *>(ptr + sizeof(int32_t)));
-              *pk = key;
-            }
-            else
-            {
-              memcpy(&ptr, &key, type_size_);
+              if (key_allocator_)
+              {
+                K *pk = reinterpret_cast<K *>(const_cast<char *>(ptr + sizeof(int32_t)));
+                *pk = key;
+              }
+              else
+              {
+                memcpy(&ptr, &key, type_size_);
+              }
             }
           }
-        }
-        else if (key_allocator_)
-        {
-          key_allocator_->release(pkey);
+          else if (key_allocator_)
+          {
+            key_allocator_->release(pkey);
+          }
         }
       }
       return ret;
@@ -461,12 +479,20 @@ namespace oceanbase
       int32_t ret = ERROR_CODE_OK;
       // 分配内存
       char *pkey = set_key_to_buf(NULL, key);
-      // 插入一个key
-      ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), overwrite);
-      // 如果失败, 释放掉key
-      if (key_allocator_ && ret != ERROR_CODE_OK)
+      if (NULL == pkey) 
       {
-        key_allocator_->release(pkey);
+        TBSYS_LOG(ERROR, "alloc memory fail");
+        ret = ERROR_CODE_ALLOC_FAIL;
+      }
+      else
+      {
+        // 插入一个key
+        ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), overwrite);
+        // 如果失败, 释放掉key
+        if (key_allocator_ && ret != ERROR_CODE_OK)
+        {
+          key_allocator_->release(pkey);
+        }
       }
       return ret;
     }
@@ -477,13 +503,21 @@ namespace oceanbase
       int32_t ret = ERROR_CODE_OK;
       // 分配内存
       char *pkey = set_key_to_buf(NULL, key);
-      // 插入一个key
-      ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), true);
-      old_value = (V)(long)handle.get_old_value();
-      // 如果失败, 释放掉key
-      if (key_allocator_ && ret != ERROR_CODE_OK)
+      if (NULL == pkey) 
       {
-        key_allocator_->release(pkey);
+        TBSYS_LOG(ERROR, "alloc memory fail");
+        ret = ERROR_CODE_ALLOC_FAIL;
+      }
+      else
+      {
+        // 插入一个key
+        ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), true);
+        old_value = (V)(long)handle.get_old_value();
+        // 如果失败, 释放掉key
+        if (key_allocator_ && ret != ERROR_CODE_OK)
+        {
+          key_allocator_->release(pkey);
+        }
       }
       return ret;
     }
@@ -543,10 +577,17 @@ namespace oceanbase
         if (pkey == NULL)
         {
           pkey = key_allocator_->alloc();
-          *(reinterpret_cast<int32_t*>(pkey)) = 1;
         }
-        K* pk = reinterpret_cast<K*>(pkey + sizeof(int32_t));
-        (*pk) = key;
+        if (NULL == pkey)
+        {
+          TBSYS_LOG(ERROR, "alloc memory fail");
+        }
+        else
+        {
+          *(reinterpret_cast<int32_t*>(pkey)) = 1;
+          K* pk = reinterpret_cast<K*>(pkey + sizeof(int32_t));
+          (*pk) = key;
+        }
       }
       return pkey;
     }
@@ -555,4 +596,3 @@ namespace oceanbase
 } // end namespace oceanbase
 
 #endif
-

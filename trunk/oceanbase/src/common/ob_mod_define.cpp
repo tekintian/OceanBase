@@ -1,21 +1,14 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_mod_define.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
 #include "ob_mod_define.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
+
+namespace oceanbase
+{
+  namespace common
+  {
+    ExpStat g_malloc_size_stat("size");
+  }; // end namespace common
+}; // end namespace oceanbase
 
 ObModInfo oceanbase::common::OB_MOD_SET[G_MAX_MOD_NUM]; 
 
@@ -63,4 +56,3 @@ int32_t oceanbase::common::ObModSet::get_max_mod_num()const
 {
   return mod_num_;
 }
-

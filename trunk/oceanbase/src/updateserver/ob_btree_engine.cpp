@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_btree_engine.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_btree_engine.cpp / hash / common / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2010-09-09 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #include "ob_btree_engine.h"
 
 namespace oceanbase
@@ -122,7 +126,7 @@ namespace oceanbase
         if (ERROR_CODE_OK != (btree_ret = keybtree_.put(key, pvalue, true)))
         {
           TBSYS_LOG(WARN, "put to keybtree fail btree_ret=%d %s %s", btree_ret, key.log_str(), value.log_str());
-          ret = OB_ERROR;
+          ret = (ERROR_CODE_ALLOC_FAIL == btree_ret) ? OB_MEM_OVERFLOW : OB_ERROR;
         }
         else
         {
@@ -151,7 +155,7 @@ namespace oceanbase
       else if (NULL == (pvalue = (TEValue*)allocer_->indep_alloc(sizeof(value))))
       {
         TBSYS_LOG(WARN, "alloc value memory fail");
-        ret = OB_ERROR;
+        ret = OB_MEM_OVERFLOW;
       }
       else
       {
@@ -612,6 +616,4 @@ namespace oceanbase
     }
   }
 }
-
-
 

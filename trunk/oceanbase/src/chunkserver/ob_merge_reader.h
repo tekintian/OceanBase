@@ -1,26 +1,23 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
+/*
+ *  (C) 2007-2010 Taobao Inc.
  *  
- * Version: 5567
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License version 2 as
+ *  published by the Free Software Foundation.
  *
- * ob_merge_reader.h
+ *         ????.cpp is for what ...
  *
- * Authors:
+ *  Version: $Id: ipvsadm.c,v 1.27 2005/12/10 16:00:07 wensong Exp $
+ *
+ *  Authors:
  *     qushan <qushan@taobao.com>
- * Changes: 
- *     maoqi <maoqi@taobao.com>
- *     huating <huating.zmq@taobao.com>
- *
+ *        - some work details if you want
  */
 #ifndef OCEANBASE_CHUNKSERVER_H_
 #define OCEANBASE_CHUNKSERVER_H_
 
 #include "common/ob_iterator.h"
-#include "sstable/ob_seq_sstable_scanner.h"
+#include "sstable/ob_sstable_scanner.h"
 
 namespace oceanbase 
 { 
@@ -51,7 +48,7 @@ namespace oceanbase
         ObTablet* tablet_;
         ObMultiVersionTabletImage& tablet_image_;
         ObTabletManager& manager_;
-        sstable::ObSeqSSTableScanner scanner_;
+        sstable::ObSSTableScanner scanner_;
     };
   } // end namespace chunkserver
 } // end namespace oceanbase

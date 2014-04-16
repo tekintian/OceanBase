@@ -1,16 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_iterator.h for ...
+ *
+ *
+ * Version: 0.1: ob_iterator.h,v 0.1 2010/08/18 13:24:51 chuanhui Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - some work details if you want
  *
  */
 #ifndef __OCEANBASE_CHUNKSERVER_OB_ITERATOR_H_
@@ -23,14 +24,15 @@ namespace oceanbase
   namespace common
   {
     // interface of iterator
-    class ObIterator
+    template <typename T>
+    class ObIteratorTmpl
     {
       public:
-        ObIterator()
+        ObIteratorTmpl()
         {
           // empty
         }
-        virtual ~ObIterator()
+        virtual ~ObIteratorTmpl()
         {
           // empty
         }
@@ -39,19 +41,14 @@ namespace oceanbase
         // @return OB_SUCCESS if sucess, OB_ITER_END if iter ends, or other error code
         virtual int next_cell() = 0;
         // Gets the current cell.
-        virtual int get_cell(oceanbase::common::ObCellInfo** cell) = 0;
-        virtual int get_cell(oceanbase::common::ObCellInfo** cell, bool* is_row_changed)
-        {
-          if (NULL != is_row_changed)
-          {
-            *is_row_changed = false;
-          }
-          return get_cell(cell);
-        }
+        virtual int get_cell(T** cell) = 0;
+        virtual int get_cell(T** cell, bool* is_row_changed) = 0;
+        virtual int is_row_finished(bool* is_row_finished) {UNUSED(is_row_finished); return OB_NOT_IMPLEMENT;};
     };
+    typedef ObIteratorTmpl<ObCellInfo> ObIterator;
+    typedef ObIteratorTmpl<ObInnerCellInfo> ObInnerIterator;
   }
 }
 
 #endif //__OB_ITERATOR_H__
-
 

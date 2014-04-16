@@ -1,20 +1,34 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
  *
- * ob_kv_storecache.h for ...
+ * ob_kv_storecache.h is for what ...
+ *
+ *  Description
+ *
+ * 无锁的lrucache实现
+ *
+ * ITEM_SIZE 为平均每个缓存对象的大小
+ * 在没有深拷贝的情况下可以设为sizeof(Key) + sizeof(Value)
+ *
+ * 缓存对象可批量淘汰 BLOCK_SIZE 可以取默认值为1M
+ * 缓存对象不可批量淘汰 BLOCK_SIZE 取值为ITEM_SIZE的大小
+ *
+ * BLOCK_SIZE 取值小于128K的时候 为了避免大量小内存的分配
+ * 需要使用 KVStoreCacheComponent::MultiObjFreeList 作为内存分配器
+ * 否则可以使用默认的 KVStoreCacheComponent::SingleObjFreeList 作为内存分配器
  *
  * Authors:
+ *   yubai <yubai.lk@taobao.com>
  *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef  OCEANBASE_COMMON_KV_STORE_CACHE_H_
 #define  OCEANBASE_COMMON_KV_STORE_CACHE_H_
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,7 +43,7 @@
 #include "ob_atomic.h"
 #include "ob_thread_objpool.h"
 #include "ob_trace_log.h"
-
+#include "ob_rowkey.h"
 namespace oceanbase
 {
   namespace common
@@ -38,7 +52,7 @@ namespace oceanbase
     {
       struct NotNeedDeepCopyTag {};
       struct ObStringDeepCopyTag {};
-
+      struct ObRowkeyDeepCopyTag {};
       template <class T>
       struct traits
       {
@@ -51,6 +65,11 @@ namespace oceanbase
         typedef ObStringDeepCopyTag Tag;
       };
 
+      template <>
+      struct traits<ObRowkey>
+      {
+        typedef ObRowkeyDeepCopyTag Tag;
+      };
       template <class T>
       const char *log_str(const T &obj)
       {
@@ -109,18 +128,62 @@ namespace oceanbase
 
       inline int32_t do_size(const ObString &data, ObStringDeepCopyTag)
       {
-        return (sizeof(ObString) + std::max(data.size(), data.length()));
+        return static_cast<int32_t>(sizeof(ObString) + std::max(data.size(), data.length()));
       }
 
       inline void do_destroy(ObString *data, ObStringDeepCopyTag)
       {
         data->~ObString();
       }
+      class BufferAllocator
+      {
+        public:
+          explicit BufferAllocator(char *buffer) : buffer_(buffer), pos_(0) {};
+          inline char *alloc(const int64_t size)
+          {
+            char *ret = NULL;
+            if (NULL != buffer_)
+            {
+              ret = buffer_ + pos_;
+              pos_ += size;
+            }
+            return ret;
+          };
+        private:
+          char *buffer_;
+          int64_t pos_;
+      };
+
+      inline ObRowkey *do_copy(const ObRowkey &other, char *buffer, ObRowkeyDeepCopyTag)
+      {
+        ObRowkey *ret = new(buffer) ObRowkey();
+        if (NULL != ret)
+        {
+          BufferAllocator allocator(buffer + sizeof(ObRowkey));
+          int tmp_ret = other.deep_copy(*ret, allocator);
+          if (OB_SUCCESS != tmp_ret)
+          {
+            TBSYS_LOG(WARN, "deep_copy rowkey fail ret=%d", tmp_ret);
+            ret = NULL;
+          }
+        }
+        return ret;
+      }
+
+      inline int32_t do_size(const ObRowkey &data, ObRowkeyDeepCopyTag)
+      {
+        return (static_cast<int32_t>(sizeof(ObRowkey)) + static_cast<int32_t>(data.get_deep_copy_size()));
+      }
+
+      inline void do_destroy(ObRowkey *data, ObRowkeyDeepCopyTag)
+      {
+        data->~ObRowkey();
+      }
 
       struct DefaultAllocator
       {
-        void *alloc(const int32_t nbyte) {return ob_malloc(nbyte, ObModIds::OB_KVSTORE_CACHE);};
-        void free(void *ptr) {ob_free(ptr, ObModIds::OB_KVSTORE_CACHE);};
+        void *alloc(const int32_t nbyte) {return ob_tc_malloc(nbyte, ObModIds::OB_KVSTORE_CACHE);};
+        void free(void *ptr) {ob_tc_free(ptr, ObModIds::OB_KVSTORE_CACHE);};
       };
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -155,7 +218,7 @@ namespace oceanbase
           int64_t mb_infos_pos;
       };
 
-      template <class Key, class Value, int64_t BlockSize, bool UseStaticBuf = true, 
+      template <class Key, class Value, int64_t BlockSize, bool UseStaticBuf = true,
         class Allocator = DefaultAllocator>
       class MemBlock
       {
@@ -177,12 +240,12 @@ namespace oceanbase
         {
           uint32_t magic;
           int32_t  size;
-          Key*     first; 
+          Key*     first;
           Value*   second;
-  
+
           KVPair() : magic(KVPAIR_MAGIC_NUM), size(0), first(NULL), second(NULL)
           {
-  
+
           }
         };
         public:
@@ -190,8 +253,8 @@ namespace oceanbase
           static const int64_t ALIGN_SIZE = sizeof(size_t);
           static const uint32_t KVPAIR_MAGIC_NUM = 0x4B564B56;  //"KVKV"
         public:
-          MemBlock() 
-          : next_(NULL), get_cnt_(0), last_time_(0), info_pos_(-1), 
+          MemBlock()
+          : next_(NULL), get_cnt_(0), last_time_(0), info_pos_(-1),
             payload_size_(0), buffer_(NULL)
           {
             atomic_pos_.buffer = 0;
@@ -234,10 +297,10 @@ namespace oceanbase
               offset += reinterpret_cast<KVPair*>(&buffer_[offset])->size;
             }
             /**
-             * we can ensure the offset of buffer_ member is 8 bytes 
-             * aligned, and the start address of buffer_ member is 8 bytes 
-             * aligned, so we can new instance at the beginning of buffer_, 
-             * needn't align the start address of buffer_. 
+             * we can ensure the offset of buffer_ member is 8 bytes
+             * aligned, and the start address of buffer_ member is 8 bytes
+             * aligned, so we can new instance at the beginning of buffer_,
+             * needn't align the start address of buffer_.
              */
             atomic_pos_.buffer = 0;
             atomic_pos_.pairs = 0;
@@ -311,7 +374,7 @@ namespace oceanbase
               atomic_old.atomic = atomic_num_.atomic;
               atomic_new.atomic = atomic_old.atomic;
               atomic_cmp.atomic = atomic_old.atomic;
-              
+
               atomic_new.ref += 1;
 
               if (atomic_old.atomic == atomic_compare_exchange(&(atomic_num_.atomic), atomic_new.atomic, atomic_cmp.atomic))
@@ -332,7 +395,7 @@ namespace oceanbase
               atomic_old.atomic = atomic_num_.atomic;
               atomic_new.atomic = atomic_old.atomic;
               atomic_cmp.atomic = atomic_old.atomic;
-              
+
               if (seq_num != atomic_old.seq)
               {
                 break;
@@ -368,7 +431,7 @@ namespace oceanbase
               atomic_old.atomic = atomic_num_.atomic;
               atomic_new.atomic = atomic_old.atomic;
               atomic_cmp.atomic = atomic_old.atomic;
-              
+
               if (0 == atomic_old.ref)
               {
                 break;
@@ -399,7 +462,7 @@ namespace oceanbase
               atomic_old.atomic = atomic_num_.atomic;
               atomic_new.atomic = atomic_old.atomic;
               atomic_cmp.atomic = atomic_old.atomic;
-              
+
               atomic_new.ref -= 1;
               if (0 == atomic_new.ref)
               {
@@ -423,16 +486,16 @@ namespace oceanbase
           {
             /**
              * we could create key and value struct instance in memblock, if
-             * we can ensure that the start address of each block data is 8 
-             * bytes aligned, and the compiler can ensure the struct size is 
-             * 8 bytes aligned on 64 bit system, then we create key and 
-             * value struct instance at the beginning of block data, so the 
-             * start address of key instance or value instance is 8 bytes 
-             * aligned. it can make the cpu run faster than unaligned 
-             * instance. 
+             * we can ensure that the start address of each block data is 8
+             * bytes aligned, and the compiler can ensure the struct size is
+             * 8 bytes aligned on 64 bit system, then we create key and
+             * value struct instance at the beginning of block data, so the
+             * start address of key instance or value instance is 8 bytes
+             * aligned. it can make the cpu run faster than unaligned
+             * instance.
              */
             int ret = OB_SUCCESS;
-            int32_t align_kv_size = get_align_size(key, value);
+            int32_t align_kv_size = static_cast<int32_t>(get_align_size(key, value));
             AtomicInt64 old_atomic_pos = {0};
             AtomicInt64 new_atomic_pos = {0};
             while (true)
@@ -479,10 +542,10 @@ namespace oceanbase
 
                 /**
                  * NOTE: even through copy key or value failed, we could assign
-                 * the size and magic field of KVPair instance correctly and 
-                 * copy KVPair instance into memblock, because we could traverse 
-                 * the memblock by KVPair instance, it stores the size of 
-                 * current kv data, (sizeof(KVPair) + size(key) + size(value)) 
+                 * the size and magic field of KVPair instance correctly and
+                 * copy KVPair instance into memblock, because we could traverse
+                 * the memblock by KVPair instance, it stores the size of
+                 * current kv data, (sizeof(KVPair) + size(key) + size(value))
                  */
                 kv_pair.first = NULL;
                 kv_pair.second = NULL;
@@ -573,7 +636,7 @@ namespace oceanbase
             if (!UseStaticBuf)
             {
               /**
-               * current fixed size buffer is not big enough, free current 
+               * current fixed size buffer is not big enough, free current
                * fixed buffer. then allocate a new buffer.
                */
               if (NULL != buffer_ && align_size > MEM_BLOCK_SIZE)
@@ -584,7 +647,7 @@ namespace oceanbase
 
               if (NULL == buffer_)
               {
-                buffer_ = static_cast<char*>(allocator_.alloc(alloc_size));
+                buffer_ = static_cast<char*>(allocator_.alloc(static_cast<int32_t>(alloc_size)));
                 if (NULL == buffer_)
                 {
                   TBSYS_LOG(ERROR, "allocate memory for memblock failed");
@@ -592,7 +655,7 @@ namespace oceanbase
                 }
               }
             }
-            else 
+            else
             {
               if (align_size > MEM_BLOCK_SIZE)
               {
@@ -621,18 +684,18 @@ namespace oceanbase
             if (!UseStaticBuf && NULL != buffer_)
             {
               /**
-               * only free the buffer which size is larger than memory block 
-               * size, this memory will return to system directly, if the 
-               * payload size is equal to memory block size, the buffer will 
-               * be reused. 
+               * only free the buffer which size is larger than memory block
+               * size, this memory will return to system directly, if the
+               * payload size is equal to memory block size, the buffer will
+               * be reused.
                */
               if (payload_size > MEM_BLOCK_SIZE)
               {
                 /**
-                 * there is only one pair in the huge memblock, before free the 
-                 * memblock, we could destroy key and value in the pair, and 
-                 * reset the internal status. otherwise after call free() then 
-                 * call reset(), it will core dump because buffer_ is null. 
+                 * there is only one pair in the huge memblock, before free the
+                 * memblock, we could destroy key and value in the pair, and
+                 * reset the internal status. otherwise after call free() then
+                 * call reset(), it will core dump because buffer_ is null.
                  */
                 reset();
                 allocator_.free(buffer_);
@@ -646,7 +709,7 @@ namespace oceanbase
           {
             if (!UseStaticBuf && NULL != buffer_)
             {
-              //free all the buffer allocated dynamicly 
+              //free all the buffer allocated dynamicly
               allocator_.free(buffer_);
               buffer_ = NULL;
             }
@@ -654,7 +717,7 @@ namespace oceanbase
         private:
           AtomicInt64 atomic_pos_;
           AtomicInt64 atomic_num_;
-          MemBlock *next_;    
+          MemBlock *next_;
           int64_t get_cnt_;
           int64_t last_time_;
           int64_t info_pos_;
@@ -668,7 +731,7 @@ namespace oceanbase
           Allocator allocator_;
           char *buffer_;
           char static_buffer_[UseStaticBuf ? MEM_BLOCK_SIZE : 0];
-      };                      
+      };
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -679,19 +742,19 @@ namespace oceanbase
       };
 
       template <class T, class Allocator = DefaultAllocator>
-      class MultiObjFreeList
+      class MultiObjFreeListTemp
       {
         static const int64_t BlockSize = T::MEM_BLOCK_SIZE;
-        static const uint64_t MB_SIZE = 1024 * 1024;
+        static const uint64_t MB_SIZE = 2 * 1024 * 1024;
         static const int64_t ITEM_NUM = MB_SIZE / sizeof(T) + ((MB_SIZE >= sizeof(T)) ? 0 : 1);
         typedef hash::SimpleAllocer<T, ITEM_NUM, hash::SpinMutexDefendMode, Allocator> FreeList;
         public:
           static const int type = MULTI;
         public:
-          MultiObjFreeList() : max_alloc_size_(INT64_MAX), alloc_size_(0)
+          MultiObjFreeListTemp() : max_alloc_size_(INT64_MAX), alloc_size_(0)
           {
           };
-          ~MultiObjFreeList()
+          ~MultiObjFreeListTemp()
           {
             clear();
           };
@@ -723,14 +786,14 @@ namespace oceanbase
             T *ret = NULL;
             if (align_size <= 0 || align_size > BlockSize)
             {
-              TBSYS_LOG(WARN, "invalid param, align_size=%ld, block_size=%ld", 
+              TBSYS_LOG(WARN, "invalid param, align_size=%ld, block_size=%ld",
                         align_size, BlockSize);
             }
             else
             {
               if ((int64_t)atomic_add((uint64_t*)&alloc_size_, BlockSize) + BlockSize < max_alloc_size_)
               {
-                ret = allocator_.allocate();
+                ret = allocator_.alloc();
                 if (NULL != ret && OB_SUCCESS != ret->alloc(BlockSize))
                 {
                   free(ret);
@@ -749,7 +812,7 @@ namespace oceanbase
             if (NULL != ptr)
             {
               int64_t free_size = ptr->free();
-              allocator_.deallocate(ptr);
+              allocator_.free(ptr);
               atomic_add((uint64_t*)&alloc_size_, (uint64_t)-free_size);
             }
           };
@@ -759,18 +822,23 @@ namespace oceanbase
           int64_t alloc_size_;     //how much memory has allocated currently
       };
 
-      template <class T, class Allocator = ThreadAllocator<T, MutilObjAllocator<T, 1024*1024> > >
-      class SingleObjFreeList
+      template <class T>
+      class MultiObjFreeList : public MultiObjFreeListTemp<T, DefaultAllocator>
+      {
+      };
+
+      template <class T, class Allocator = ThreadAllocator<T, MutilObjAllocator<T, 2*1024*1024> > >
+      class SingleObjFreeListTemp
       {
         static const int64_t BlockSize = T::MEM_BLOCK_SIZE;
         public:
           static const int type = SINGLE;
         public:
-          SingleObjFreeList() : head_(NULL), max_alloc_size_(INT64_MAX), alloc_size_(0)
+          SingleObjFreeListTemp() : head_(NULL), max_alloc_size_(INT64_MAX), alloc_size_(0)
           {
             pthread_spin_init(&spin_, PTHREAD_PROCESS_PRIVATE);
           };
-          ~SingleObjFreeList()
+          ~SingleObjFreeListTemp()
           {
             clear();
             pthread_spin_destroy(&spin_);
@@ -790,7 +858,7 @@ namespace oceanbase
                 iter = iter->get_next();
                 tmp->clear();
                 tmp->~T();
-                allocator_.deallocate(tmp);
+                allocator_.free(tmp);
               }
               head_ = NULL;
             }
@@ -836,7 +904,7 @@ namespace oceanbase
                 pthread_spin_unlock(&spin_);
                 if (NULL == ret)
                 {
-                  void *tmp = allocator_.allocate();
+                  void *tmp = allocator_.alloc();
                   ret = new(tmp) T();
                 }
                 if (NULL != ret && OB_SUCCESS != ret->alloc(alloc_size))
@@ -885,6 +953,11 @@ namespace oceanbase
           int64_t max_alloc_size_; //maximum memory size allowed to allocate
           int64_t alloc_size_;     //how much memory has allocated currently
       };
+
+      template <class T>
+        class SingleObjFreeList : public SingleObjFreeListTemp<T, ThreadAllocator<T, MutilObjAllocator<T, 2*1024*1024> > >
+      {
+      };
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -899,6 +972,7 @@ namespace oceanbase
         FreeList<void*>::type == KVStoreCacheComponent::MULTI> MemBlock;
       static const int64_t MEM_BLOCK_SIZE = MemBlock::MEM_BLOCK_SIZE;
       static const int64_t MAX_WASH_OUT_SIZE = 10 * MEM_BLOCK_SIZE;
+      static const int64_t MAX_MEMBLOCK_INFO_COUNT = 128 * 1024; //128K
       typedef FreeList<MemBlock> MemBlockFreeList;
       struct MemBlockInfo
       {
@@ -929,8 +1003,8 @@ namespace oceanbase
       };
       public:
         KVStoreCache() : inited_(false), adapter_(NULL), free_list_(), avg_get_cnt_(0),
-                         total_mb_num_(0), mb_infos_(NULL), not_revert_cnt_(0),
-                         cache_miss_cnt_(0), cache_hit_cnt_(0),
+                         max_mb_num_(MAX_MEMBLOCK_INFO_COUNT),total_mb_num_(0), mb_infos_(NULL),
+                         not_revert_cnt_(0), cache_miss_cnt_(0), cache_hit_cnt_(0),
                          cur_memblock_(NULL)
         {
         };
@@ -953,7 +1027,9 @@ namespace oceanbase
           else
           {
             total_mb_num_ = total_size / MemBlock::MEM_BLOCK_SIZE + ((total_size >= MemBlock::MEM_BLOCK_SIZE) ? 0 : 1);
-            mb_infos_ = new(std::nothrow) MemBlockInfo[total_mb_num_];
+            max_mb_num_ = std::max(max_mb_num_, total_mb_num_);
+            //preallocate mem block info with max size
+            mb_infos_ = new(std::nothrow) MemBlockInfo[max_mb_num_];
             if (NULL != mb_infos_)
             {
               memset(mb_infos_, 0, sizeof(MemBlockInfo) * total_mb_num_);
@@ -968,6 +1044,49 @@ namespace oceanbase
           }
           return ret;
         };
+        int enlarge_total_size(const int64_t total_size)
+        {
+          int ret = OB_SUCCESS;
+          if (!inited_)
+          {
+            ret = OB_NOT_INIT;
+          }
+          else if (0 >= total_size)
+          {
+            ret = OB_INVALID_ARGUMENT;
+          }
+          else
+          {
+            int64_t mb_num = total_size / MemBlock::MEM_BLOCK_SIZE + ((total_size >= MemBlock::MEM_BLOCK_SIZE) ? 0 : 1);
+            if (mb_num > total_mb_num_ && mb_num <= max_mb_num_)
+            {
+              TBSYS_LOG(INFO, "cache size enlarged, new_cache_size=%ld, old_cache_size=%ld",
+                        total_size, total_mb_num_ * MemBlock::MEM_BLOCK_SIZE);
+              memset(mb_infos_ + total_mb_num_, 0, sizeof(MemBlockInfo) * (mb_num - total_mb_num_));
+              free_list_.set_max_alloc_size(mb_num * MemBlock::MEM_BLOCK_SIZE);
+              total_mb_num_ = mb_num;
+            }
+            else if (mb_num < total_mb_num_)
+            {
+              TBSYS_LOG(WARN, "can't resize cache size with less total size, "
+                  "new_memblock_info_num=%ld, old_memblock_info_num=%ld",
+                  mb_num, total_mb_num_);
+              ret = OB_ERROR;
+            }
+            else if (mb_num == total_mb_num_)
+            {
+              TBSYS_LOG(INFO, "cache size doesn't change, old_cache_size=%ld, cache_size=%ld",
+                  total_mb_num_ * MemBlock::MEM_BLOCK_SIZE, total_size);
+            }
+            else
+            {
+              TBSYS_LOG(INFO, "cache size can not change, max_cache_size=%ld, cache_size=%ld",
+                  max_mb_num_ * MemBlock::MEM_BLOCK_SIZE, total_size);
+              ret = OB_MEM_OVERFLOW;
+            }
+          }
+          return ret;
+        }
         int destroy()
         {
           int ret = OB_SUCCESS;
@@ -1091,9 +1210,9 @@ namespace oceanbase
                 {
                   /**
                    * thread owns the big memblock, after store the only one kvpair
-                   * into it, we submit the thread local memblock immediately. 
-                   * function get_cur_memblock_() can ensure big memblock is 
-                   * thread local. 
+                   * into it, we submit the thread local memblock immediately.
+                   * function get_cur_memblock_() can ensure big memblock is
+                   * thread local.
                    */
                   submit_memblock_(memblock);
                 }
@@ -1131,7 +1250,7 @@ namespace oceanbase
             if (StoreHandle::LOCKED == old_handle.stat)
             {
               if (NULL == old_handle.mem_block
-                  || !((MemBlock*)old_handle.mem_block)->check_seq_num_and_inc_ref_cnt(old_handle.seq_num))
+                  || !((MemBlock*)old_handle.mem_block)->check_seq_num_and_inc_ref_cnt(static_cast<int32_t>(old_handle.seq_num)))
               {
                 ret = OB_ERROR;
               }
@@ -1193,7 +1312,7 @@ namespace oceanbase
                     if (NULL != tmp_mem_block
                         && tmp_mem_block->check_and_inc_ref_cnt())
                     {
-                      revert(handle);    
+                      revert(handle);
                       handle.seq_num = tmp_mem_block->get_seq_num();
                       handle.kv_pos = 0;
                       handle.stat = StoreHandle::LOCKED;
@@ -1259,7 +1378,7 @@ namespace oceanbase
           {
             ret = OB_INVALID_ARGUMENT;
           }
-          else if (!((MemBlock*)handle.mem_block)->check_seq_num_and_inc_ref_cnt(handle.seq_num))
+          else if (!((MemBlock*)handle.mem_block)->check_seq_num_and_inc_ref_cnt(static_cast<int32_t>(handle.seq_num)))
           {
             atomic_inc((uint64_t*)&cache_miss_cnt_);
             ret = OB_ENTRY_NOT_EXIST;
@@ -1403,6 +1522,10 @@ namespace oceanbase
               num_get_cnt += 1;
             }
           }
+          for (int64_t i = 0; i < num; i++)
+          {
+            std::pop_heap(&heap[0], &heap[num - i], cmp_func);
+          }
           if (0 != num_get_cnt)
           {
             avg_get_cnt_ = sum_get_cnt / num_get_cnt;
@@ -1415,7 +1538,6 @@ namespace oceanbase
             int64_t pos = heap[i];
             MemBlock *old = mb_infos_[pos].mem_block;
             if (NULL != old
-                && cmp_func(pos, max)
                 && old == (MemBlock*)atomic_compare_exchange((uint64_t*)&(mb_infos_[pos].mem_block), (uint64_t)NULL, (uint64_t)old))
             {
               memblock_payload_size = old->get_payload_size();
@@ -1448,10 +1570,18 @@ namespace oceanbase
           }
           else
           {
+            //if cache is 95% full, wash out some memblocks
+            if ((free_list_.get_alloc_size() * 100 / free_list_.get_max_alloc_size() > 95)
+               && wash_out_lock_.try_wrlock())
+            {
+              wash_out_timeout_(MAX_WASH_OUT_SIZE);
+              wash_out_lock_.unlock();
+            }
+
             while (true)
             {
               if (align_kv_size > MemBlock::MEM_BLOCK_SIZE
-                  || (align_kv_size <= MemBlock::MEM_BLOCK_SIZE 
+                  || (align_kv_size <= MemBlock::MEM_BLOCK_SIZE
                       && (NULL == (ret = cur_memblock_) || !ret->check_and_inc_ref_cnt())))
               {
                 MemBlock *new_memblock = free_list_.alloc(align_kv_size);
@@ -1467,9 +1597,13 @@ namespace oceanbase
                   {
                     TBSYS_LOG_US(WARN, "can't wash out some memblock, alloc_size=%ld, "
                                        "align_kv_size=%ld, wash_out_size=%ld",
-                                 free_list_.get_alloc_size(), align_kv_size, wash_out_size); 
+                                 free_list_.get_alloc_size(), align_kv_size, wash_out_size);
                     break;
                   }
+                }
+                if (NULL == new_memblock)
+                {
+                  break;
                 }
                 // 第一次加引用计数 因为初始化后引用就为1
                 new_memblock->inc_ref_cnt();
@@ -1479,10 +1613,10 @@ namespace oceanbase
                 if (align_kv_size > MemBlock::MEM_BLOCK_SIZE)
                 {
                   /**
-                   * if the required memblock is big memblock, the allocated 
-                   * memblock is olny used by the current thread, and the memblock 
-                   * only can store one kvpair, so it can't share with other 
-                   * thread. it needn't set the cur_memblock. 
+                   * if the required memblock is big memblock, the allocated
+                   * memblock is olny used by the current thread, and the memblock
+                   * only can store one kvpair, so it can't share with other
+                   * thread. it needn't set the cur_memblock.
                    */
                   ret = new_memblock;
                   break;
@@ -1534,7 +1668,7 @@ namespace oceanbase
           else
           {
             TBSYS_LOG_US(WARN, "cannot find mb_info for cur_memblock=%p, will wash_out "
-                               "it directly, alloc_size_=%ld", 
+                               "it directly, alloc_size_=%ld",
                          submit_memblock, free_list_.get_alloc_size());
             deref_memblock_(submit_memblock);
           }
@@ -1553,6 +1687,7 @@ namespace oceanbase
         MemBlockFreeList free_list_;
 
         int64_t avg_get_cnt_;
+        int64_t max_mb_num_;
         int64_t total_mb_num_;
         MemBlockInfo *mb_infos_;
 
@@ -1561,6 +1696,7 @@ namespace oceanbase
         int64_t cache_hit_cnt_;
 
         MemBlock * volatile cur_memblock_;
+        SpinRWLock wash_out_lock_;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1571,14 +1707,15 @@ namespace oceanbase
     };
 
     template <class Key, class Value, int64_t ItemSize,
-              int64_t BlockSize = 1024 * 1024,
-              template <class> class FreeList = KVStoreCacheComponent::SingleObjFreeList>
+              int64_t BlockSize = 2 * 1024 * 1024,
+              template <class> class FreeList = KVStoreCacheComponent::SingleObjFreeList,
+              class DefendMode = hash::MultiWriteDefendMode>
     class KeyValueCache
     {
       static const int64_t DEFAULT_ITEM_SIZE = 1024;
       static const int64_t DEFAULT_TIMEOUT_US = 10 * 1000 * 1000;
 
-      typedef KeyValueCache<Key, Value, ItemSize, BlockSize, FreeList> Cache;
+      typedef KeyValueCache<Key, Value, ItemSize, BlockSize, FreeList, DefendMode> Cache;
       typedef KVStoreCache<Key, Value, BlockSize, FreeList, Cache> Store;
       typedef typename KVStoreCacheComponent::StoreHandle StoreHandle;
 
@@ -1587,7 +1724,7 @@ namespace oceanbase
       typedef ThreadAllocator<HashAllocType, MutilObjAllocator<HashAllocType, HashAllocatorPageSize, ObModIds::OB_KVSTORE_CACHE> > HashAllocator;
       //typedef ThreadAllocator<HashAllocType, SingleObjAllocator<HashAllocType> > HashAllocator;
       typedef hash::ObHashMap<Key, StoreHandle,
-                              hash::MultiWriteDefendMode,
+                              DefendMode,
                               hash::hash_func<Key>,
                               hash::equal_to<Key>,
                               HashAllocator> HashMap;
@@ -1625,6 +1762,20 @@ namespace oceanbase
           }
           return ret;
         };
+        int enlarge_total_size(const int64_t total_size)
+        {
+          int ret = OB_SUCCESS;
+          if (!inited_)
+          {
+            ret = OB_NOT_INIT;
+          }
+          else if (OB_SUCCESS != (ret = store_.enlarge_total_size(total_size)))
+          {
+            TBSYS_LOG(WARN, "enlarge total memory size of store cache fail, ret=%d, size=%ld",
+                ret, total_size);
+          }
+          return ret;
+        }
         int destroy()
         {
           int ret = OB_SUCCESS;
@@ -1662,6 +1813,10 @@ namespace oceanbase
         int64_t size() const
         {
           return store_.size();
+        };
+        int64_t count() const
+        {
+          return map_.size();
         };
         int64_t get_hit_cnt() const
         {
@@ -1711,41 +1866,41 @@ namespace oceanbase
         };
       public:
         /**
-         * default the overwrite param is true, it means that if the key 
-         * to put isn't existent in hashmap, isert it, if it is extent 
-         * in hashmap, overwrite it. if the overwrite param is false, it 
-         * first checks whether the key is existent in hashmap and the 
+         * default the overwrite param is true, it means that if the key
+         * to put isn't existent in hashmap, isert it, if it is extent
+         * in hashmap, overwrite it. if the overwrite param is false, it
+         * first checks whether the key is existent in hashmap and the
          * value in hashmap isn't fake, if true, return OB_ENTRY_EXIST,
-         * else store the key and value and must ensure the fake value 
-         * is overwrited. 
-         *  
-         * WARNING: when set the overwite param false, you could ensure 
-         * you have call get() function with only_cache=false, the get() 
-         * function will add a fake node for this key, and put() 
-         * function with overwrite=false will overwrite the fake node to 
-         * the actual node. 
-         *   if you get(only_cache=true), you'd better 
-         * put(overwrite=true), for this case, it doesn't support deep 
-         * copy for key. 
-         *   if you get(only_cache=false), you'd better 
-         * put(overwrite=false), for this case, it supports deep copy 
-         * for key. 
-         *  
+         * else store the key and value and must ensure the fake value
+         * is overwrited.
+         *
+         * WARNING: when set the overwite param false, you could ensure
+         * you have call get() function with only_cache=false, the get()
+         * function will add a fake node for this key, and put()
+         * function with overwrite=false will overwrite the fake node to
+         * the actual node.
+         *   if you get(only_cache=true), you'd better
+         * put(overwrite=true), for this case, it doesn't support deep
+         * copy for key.
+         *   if you get(only_cache=false), you'd better
+         * put(overwrite=false), for this case, it supports deep copy
+         * for key.
+         *
          *   get(only_cache=true) and put(overwrite=false) means only
-         * get cached value from kvcache, don't overwrite if key exists, 
-         * insert if key doesn't exist. 
-         *  
+         * get cached value from kvcache, don't overwrite if key exists,
+         * insert if key doesn't exist.
+         *
          *  get(only_cache=false) and put(overwrite=true), please don't
          *  use like this, the result is ok, but it will waste memblock
          *  memory.
-         *  
-         * @return int 
+         *
+         * @return int
          */
         int put(const Key &key, const Value &value, bool overwrite = true)
         {
           int ret = OB_SUCCESS;
           StoreHandle store_handle;
-          
+
           ret = internal_put(key, value, store_handle, overwrite);
             if (OB_SUCCESS == ret)
             {
@@ -1754,12 +1909,12 @@ namespace oceanbase
 
           return ret;
         };
-        int put_and_fetch(const Key &key, const Value &input_value, Value &output_value,  
+        int put_and_fetch(const Key &key, const Value &input_value, Value &output_value,
                           CacheHandle &handle, bool overwrite = true, bool only_cache = true)
         {
           int ret = OB_SUCCESS;
           StoreHandle store_handle;
-          
+
           ret = internal_put(key, input_value, store_handle, overwrite);
           if (OB_SUCCESS == ret)
           {
@@ -1815,16 +1970,25 @@ namespace oceanbase
           }
           return ret;
         };
-#ifdef __DEBUG_TEST__
-        int get(const Key &key, Value &value, const Value &cv, CacheHandle &handle)
-#else
         int get(const Key &key, Value &value, CacheHandle &handle, bool only_cache = true)
+        {
+          Value *pvalue = NULL;
+          int ret = get(key, pvalue, handle, only_cache);
+          if (OB_SUCCESS == ret)
+          {
+            value = *pvalue;
+          }
+          return ret;
+        }
+#ifdef __DEBUG_TEST__
+        int get(const Key &key, Value *&pvalue, const Value &cv, CacheHandle &handle)
+#else
+        int get(const Key &key, Value *&pvalue, CacheHandle &handle, bool only_cache = true)
 #endif
         {
           int ret = OB_SUCCESS;
           int hash_ret = 0;
           Key *pkey = NULL;
-          Value *pvalue = NULL;
           int64_t timeout_us = only_cache ? 0 : DEFAULT_TIMEOUT_US;
           if (!inited_)
           {
@@ -1838,11 +2002,11 @@ namespace oceanbase
           else
           {
             /**
-             * if key is existent in hash map, but we can't get kvpair from 
-             * store, the memblock which the kvpair belongs to is washed 
-             * out, it is erasing the key index in hash map and it doesn't 
-             * complete. so we get from hash map in a loop until the key 
-             * index is deleted from hash map. 
+             * if key is existent in hash map, but we can't get kvpair from
+             * store, the memblock which the kvpair belongs to is washed
+             * out, it is erasing the key index in hash map and it doesn't
+             * complete. so we get from hash map in a loop until the key
+             * index is deleted from hash map.
              */
             do
             {
@@ -1874,7 +2038,7 @@ namespace oceanbase
           if (OB_SUCCESS == ret)
           {
             //TBSYS_TRACE_LOG("kv_store_cache hit key=[%s]", KVStoreCacheComponent::log_str(key));
-            value = *pvalue;
+            //value = *pvalue;
 #ifdef __DEBUG_TEST__
             //assert(value == cv);
 #endif
@@ -1909,7 +2073,19 @@ namespace oceanbase
           }
           else
           {
-            map_.erase(key);
+            int hash_ret = map_.erase(key);
+            if (hash::HASH_EXIST == hash_ret)
+            {
+              ret = OB_SUCCESS;
+            }
+            else if (hash::HASH_NOT_EXIST == hash_ret)
+            {
+              ret = OB_ENTRY_NOT_EXIST;
+            }
+            else
+            {
+              ret = OB_ERROR;
+            }
           }
           return ret;
         };
@@ -1925,6 +2101,4 @@ namespace oceanbase
   }
 }
 
-#endif //OCEANBASE_COMMON_KV_STORE_CACHE_H_ 
-
-
+#endif //OCEANBASE_COMMON_KV_STORE_CACHE_H_

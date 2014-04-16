@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./test_key_btree.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
 #include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -180,6 +165,11 @@ void test_search(int32_t cnt)
   {
     printf("test_search failure: %d <> %d\n", success, cnt);
   }
+  if (NULL != ids)
+  {
+    free(ids);
+    ids = NULL;
+  }
 }
 
 void test_insert_batch(int32_t cnt)
@@ -256,7 +246,11 @@ void test_range_search(int32_t cnt)
     printf("test_search success\n");
   else
     printf("test_search failure: %d <> %d\n", success, cnt);
-
+  if (NULL != ids)
+  {
+    free(ids);
+    ids = NULL;
+  }
 }
 
 int32_t main(int32_t argc, char *argv[])
@@ -329,5 +323,3 @@ int32_t main(int32_t argc, char *argv[])
 
   return 0;
 }
-
-

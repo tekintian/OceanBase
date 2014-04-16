@@ -1,23 +1,30 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_client_wrapper.h for ...
- *
- * Authors:
- *   rongxuan <rongxuan.lc@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_ups_cache.h / updateserver / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2011-02-24 by Rongxuan (rongxuan.lc@taobao.com)
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ //
+ // Change Log
+ //
+////====================================================================
+
 #ifndef OCEANBASE_UPDATESERVER_CLIENTWRAPPER_H_
 #define OCEANBASE_UPDATESERVER_CLIENTWRAPPER_H_
 
 #include "mergeserver/ob_ms_get_cell_stream.h"
-#include "mergeserver/ob_merge_join_agent.h"
+#include "mergeserver/ob_ms_tablet_location_proxy.h"
+#include "mergeserver/ob_merge_join_agent_imp.h"
+#include "ob_ups_rpc_proxy.h"
+#include "ob_ups_cache.h"
 
 namespace oceanbase
 {
@@ -28,22 +35,18 @@ namespace oceanbase
     class ObClientWrapper
     {
       public:
-        // retry interval time
-        static const int64_t RETRY_INTERVAL_TIME = 20; // 20 ms usleep
-
-        //
         ObClientWrapper(const int64_t rpc_retry_times,
             const int64_t rpc_timeout,
             const ObServer & root_server,
-            const ObServer & update_server,
-            const ObServer & merge_server);
+            const ObServer & merge_server,
+            ObUpsTableMgr & table_mgr,
+            ObUpsCache& ups_cache);
 
         ~ObClientWrapper();
 
         int init(ObMergerRpcStub * rpc_stub,
             ObMergerSchemaManager * schema,
-            ObMergerTabletLocationCache * cache,
-            ObMergerServiceMonitor * monitor = NULL);
+            ObMergerLocationCacheProxy * cache);
 
         // 获取一批cell的值
         //通过ObMergeJoinAgent的get_cell得到所有结果值
@@ -54,21 +57,22 @@ namespace oceanbase
         int next_cell();
         void clear();
 
-        inline ObMergerRpcProxy & get_proxy()
+        inline ObUpsMergerRpcProxy& get_proxy()
         {
           return rpc_proxy_;
         }
 
       private:
+        static const int64_t MAX_MEMORY_SIZE = 2 * 1024L * 1024L;
+
+      private:
         bool init_;
         ObMSGetCellStream * ups_stream_;
         ObMSGetCellStream * ups_join_stream_;
-        ObMergerRpcProxy rpc_proxy_;
-        ObMergeJoinAgent ups_rpc_agent_;
+        ObUpsMergerRpcProxy rpc_proxy_;
+        ObGetMergeJoinAgentImp ups_rpc_agent_;
     };
   } //end of namespace updateserver
 }//end of namespace oceanbase
 
 #endif //OCEANBASE_UPDATASERVER_CLIENT_WRAPPER
-
-

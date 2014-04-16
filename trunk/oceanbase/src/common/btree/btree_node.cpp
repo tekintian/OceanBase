@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./btree_node.cpp for ...
- *
- * Authors:
- *   duolong <duolong@taobao.com>
- *
- */
 #include "btree_alloc.h"
 #include "btree_node.h"
 
@@ -301,7 +286,7 @@ namespace oceanbase
 
         // 把next_node向后移size个位置
         if (next_node->size_ > 0)
-          next_node->pair_move_backward(size, 0, next_node->size_);
+          next_node->pair_move_backward(static_cast<int16_t>(size), 0, next_node->size_);
 
         // copy to next_node
         BtreeKeyValuePair *dst = next_node->pairs_;
@@ -313,8 +298,8 @@ namespace oceanbase
           dst ++;
           src ++;
         }
-        next_node->size_ += size;
-        size_ -= size;
+        next_node->size_ = static_cast<int16_t>(next_node->size_ + size);
+        size_ = static_cast<int16_t>(size_ - size);
         ret = ERROR_CODE_OK;
       }
       return ret;
@@ -351,11 +336,11 @@ namespace oceanbase
           dst ++;
           src ++;
         }
-        next_node->size_ -= size;
-        size_ += size;
+        next_node->size_ = static_cast<int16_t>(next_node->size_ - size);
+        size_ = static_cast<int16_t>(size_ + size);
 
         // 把next_node向前移size个位置
-        next_node->pair_move_forward(0, size, next_node->size_);
+        next_node->pair_move_forward(0, static_cast<int16_t>(size), next_node->size_);
         ret = ERROR_CODE_OK;
       }
       return ret;
@@ -392,7 +377,7 @@ namespace oceanbase
             dst ++;
             src ++;
           }
-          size_ += size;
+          size_ = static_cast<int16_t>(size_ + size);
           ret = ERROR_CODE_OK;
         }
       }
@@ -433,8 +418,8 @@ namespace oceanbase
 
       if (n > 0 && n + dst <= max_size_)
       {
-        dst += n;
-        src += n;
+        dst = static_cast<int16_t>(dst + n);
+        src = static_cast<int16_t>(src + n);
         while(n-- > 0)
         {
           pairs_[--dst].key_ = pairs_[--src].key_;
@@ -556,4 +541,3 @@ namespace oceanbase
 
   } // end namespace common
 } // end namespace oceanbase
-

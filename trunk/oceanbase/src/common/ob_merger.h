@@ -1,16 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * ob_merger.h for ...
+ *
+ *
+ * Version: 0.1: ob_merger.h,v 0.1 2010/09/19 18:01:06 chuanhui Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - some work details if you want
  *
  */
 #ifndef __OCEANBASE_COMMON_OB_MERGER_H__
@@ -28,7 +29,7 @@ namespace oceanbase
     {
       public:
         ObMerger(bool is_asc = true);
-        ~ObMerger();
+        virtual ~ObMerger();
         void reset();
 
       public:
@@ -64,7 +65,7 @@ namespace oceanbase
         };
 
       private:
-        static const int64_t MAX_ITER_NUM = 128;
+        static const int64_t MAX_ITER_NUM = OB_UPS_MAX_MINOR_VERSION_NUM;
         ObIterator* iters_[MAX_ITER_NUM];
         IterStatus iter_status_[MAX_ITER_NUM];
         int64_t iter_num_;
@@ -80,5 +81,4 @@ namespace oceanbase
 }
 
 #endif //__OB_MERGER_H__
-
 

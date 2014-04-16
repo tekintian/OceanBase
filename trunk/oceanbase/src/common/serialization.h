@@ -1,32 +1,32 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * serialization.h for ...
+ * serialization.h is for what ...
+ *
+ * Version: $id$
  *
  * Authors:
  *   maoqi <maoqi@taobao.com>
  *
  */
+
 #ifndef OCEANBASE_COMMON_SERIALIZATION_H_
 #define OCEANBASE_COMMON_SERIALIZATION_H_
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
 #include "ob_define.h"
-
+#include "tbsys.h"
 namespace oceanbase
 {
-  namespace common 
+  namespace common
   {
-    namespace serialization 
+    namespace serialization
     {
-
       const uint64_t OB_MAX_V1B = (__UINT64_C(1) << 7) - 1;
       const uint64_t OB_MAX_V2B = (__UINT64_C(1) << 14) - 1;
       const uint64_t OB_MAX_V3B = (__UINT64_C(1) << 21) - 1;
@@ -56,8 +56,8 @@ namespace oceanbase
       const uint64_t OB_MAX_INT_5B = (__UINT64_C(1) << 32) - 1;
       const uint64_t OB_MAX_INT_7B = (__UINT64_C(1) << 48) - 1;
       const uint64_t OB_MAX_INT_9B = UINT64_MAX;
-      
-      
+
+
       const int64_t OB_MAX_1B_STR_LEN = (__INT64_C(55));
       const int64_t OB_MAX_2B_STR_LEN = (__INT64_C(1) << 8) - 1;
       const int64_t OB_MAX_3B_STR_LEN = (__INT64_C(1) << 16) - 1;
@@ -70,31 +70,33 @@ namespace oceanbase
       const int8_t OB_DATETIME_OPERATION_BIT = 3;
       const int8_t OB_DATETIME_SIGN_BIT = 2;
       const int8_t OB_FLOAT_OPERATION_BIT_POS = 0;
+      const int8_t OB_DECIMAL_OPERATION_BIT_POS = 7;
 
       const int8_t OB_INT_VALUE_MASK = 0x1f;
       const int8_t OB_VARCHAR_LEN_MASK = 0x3f;
       const int8_t OB_DATETIME_LEN_MASK =  0x3;
 
 
-      const int8_t OB_VARCHAR_TYPE = (0x1 << 7);
-      const int8_t OB_SEQ_TYPE = 0xc0;
-      const int8_t OB_DATETIME_TYPE = 0xd0;
-      const int8_t OB_PRECISE_DATETIME_TYPE = 0xe0;
-      const int8_t OB_MODIFYTIME_TYPE = 0xf0;
-      const int8_t OB_CREATETIME_TYPE = 0xf4;
-      const int8_t OB_FLOAT_TYPE = 0xf8;
-      const int8_t OB_DOUBLE_TYPE = 0xfa;
-      const int8_t OB_NULL_TYPE =  0xfc;
-      const int8_t OB_EXTEND_TYPE = 0xfe;
-
+      const int8_t OB_VARCHAR_TYPE = static_cast<int8_t>((0x1 << 7));
+      const int8_t OB_SEQ_TYPE = static_cast<int8_t>(0xc0);
+      const int8_t OB_DATETIME_TYPE = static_cast<int8_t>(0xd0);
+      const int8_t OB_PRECISE_DATETIME_TYPE = static_cast<int8_t>(0xe0);
+      const int8_t OB_MODIFYTIME_TYPE = static_cast<int8_t>(0xf0);
+      const int8_t OB_CREATETIME_TYPE = static_cast<int8_t>(0xf4);
+      const int8_t OB_FLOAT_TYPE = static_cast<int8_t>(0xf8);
+      const int8_t OB_DOUBLE_TYPE = static_cast<int8_t>(0xfa);
+      const int8_t OB_NULL_TYPE =  static_cast<int8_t>(0xfc);
+      const int8_t OB_BOOL_TYPE =  static_cast<int8_t>(0xfd);
+      const int8_t OB_EXTEND_TYPE = static_cast<int8_t>(0xfe);
+      const int8_t OB_DECIMAL_TYPE = static_cast<int8_t>(0xff);
       inline void set_bit(int8_t& v,int8_t pos)
       {
-        v |= (1 << pos);
+        v |= static_cast<int8_t>(1 << pos);
       }
 
       inline void clear_bit(int8_t& v,int8_t pos)
       {
-        v &= ~(1 << pos);
+        v &= static_cast<int8_t>(~(1 << pos));
       }
 
       inline bool test_bit(int8_t v,int8_t pos)
@@ -102,9 +104,9 @@ namespace oceanbase
         return (v & (1 << pos));
       }
 
-      /** 
+      /**
        * @brief Encode a byte into given buffer.
-       * 
+       *
        * @param buf address of destination buffer
        * @param val the byte
        *
@@ -135,9 +137,9 @@ namespace oceanbase
         return ret;
       }
 
-      /** 
+      /**
        * @brief Enocde a 16-bit integer in big-endian order
-       * 
+       *
        * @param buf address of destination buffer
        * @param val value to encode
        */
@@ -151,8 +153,8 @@ namespace oceanbase
         int ret =((NULL != buf) && ((buf_len - pos) >= static_cast<int64_t>(sizeof(val)))) ? OB_SUCCESS : OB_ERROR;
         if (OB_SUCCESS == ret)
         {
-          *(buf + pos++) = ((((val) >> 8)) & 0xff);
-          *(buf + pos++)= ((val) & 0xff);
+          *(buf + pos++) = static_cast<char>((((val) >> 8)) & 0xff);
+          *(buf + pos++)= static_cast<char>((val) & 0xff);
         }
         return ret;
       }
@@ -162,8 +164,8 @@ namespace oceanbase
         int ret = (NULL != buf && data_len - pos  >= 2) ? OB_SUCCESS : OB_ERROR;
         if (OB_SUCCESS == ret)
         {
-          *val = (static_cast<int16_t>((*(buf + pos++))) & 0xff) << 8;
-          *val |= (*(buf + pos++) & 0xff);
+          *val = static_cast<int16_t>(((*(buf + pos++)) & 0xff) << 8);
+          *val = static_cast<int16_t>(*val | (*(buf + pos++) & 0xff));
         }
         return ret;
       }
@@ -178,10 +180,10 @@ namespace oceanbase
         int ret =((NULL != buf) && ((buf_len - pos) >= static_cast<int64_t>(sizeof(val)))) ? OB_SUCCESS : OB_ERROR;
         if (OB_SUCCESS == ret)
         {
-          *(buf + pos++) = ((val) >> 24) & 0xff;
-          *(buf + pos++) = ((val) >> 16) & 0xff;
-          *(buf + pos++) = ((val) >> 8) & 0xff;
-          *(buf + pos++) = (val) & 0xff; 
+          *(buf + pos++) = static_cast<char>(((val) >> 24) & 0xff);
+          *(buf + pos++) = static_cast<char>(((val) >> 16) & 0xff);
+          *(buf + pos++) = static_cast<char>(((val) >> 8) & 0xff);
+          *(buf + pos++) = static_cast<char>((val) & 0xff);
         }
         return ret;
       }
@@ -195,7 +197,7 @@ namespace oceanbase
           *val = ((static_cast<int32_t>(*(buf + pos++))) & 0xff) << 24;
           *val |= ((static_cast<int32_t>(*(buf + pos++))) & 0xff) << 16;
           *val |= ((static_cast<int32_t>(*(buf + pos++))) & 0xff) << 8;
-          *val |= ((static_cast<int32_t>(*(buf + pos++))) & 0xff); 
+          *val |= ((static_cast<int32_t>(*(buf + pos++))) & 0xff);
         }
         return ret;
       }
@@ -210,14 +212,14 @@ namespace oceanbase
         int ret =((NULL != buf) && ((buf_len - pos) >= static_cast<int64_t>(sizeof(val)))) ? OB_SUCCESS : OB_ERROR;
         if (OB_SUCCESS == ret)
         {
-          *(buf + pos++) = ((val) >> 56) & 0xff;
-          *(buf + pos++) = ((val) >> 48) & 0xff;
-          *(buf + pos++) = ((val) >> 40) & 0xff;
-          *(buf + pos++) = ((val) >> 32) & 0xff;
-          *(buf + pos++) = ((val) >> 24) & 0xff;
-          *(buf + pos++) = ((val) >> 16) & 0xff;
-          *(buf + pos++) = ((val) >> 8) & 0xff;
-          *(buf + pos++) = (val) & 0xff;
+          *(buf + pos++) = static_cast<char>(((val) >> 56) & 0xff);
+          *(buf + pos++) = static_cast<char>(((val) >> 48) & 0xff);
+          *(buf + pos++) = static_cast<char>(((val) >> 40) & 0xff);
+          *(buf + pos++) = static_cast<char>(((val) >> 32) & 0xff);
+          *(buf + pos++) = static_cast<char>(((val) >> 24) & 0xff);
+          *(buf + pos++) = static_cast<char>(((val) >> 16) & 0xff);
+          *(buf + pos++) = static_cast<char>(((val) >> 8) & 0xff);
+          *(buf + pos++) = static_cast<char>((val) & 0xff);
         }
         return ret;
       }
@@ -286,23 +288,23 @@ namespace oceanbase
           need_bytes = 8;
         else if (__v <= OB_MAX_V9B)
           need_bytes = 9;
-        else 
+        else
           need_bytes = 10;
         return need_bytes;
       }
 
-      /** 
+      /**
        * @brief Encode a integer (up to 64bit) in variable length encoding
-       * 
+       *
        * @param buf pointer to the destination buffer
        * @param end the end pointer to the destination buffer
        * @param val value to encode
-       * 
+       *
        * @return true - success, false - failed
        */
       inline int encode_vi64(char *buf,const int64_t buf_len,int64_t& pos,int64_t val)
       {
-        uint64_t __v = static_cast<uint64_t>(val); 
+        uint64_t __v = static_cast<uint64_t>(val);
         int ret =((NULL != buf) && ((buf_len - pos) >= encoded_length_vi64(__v))) ? OB_SUCCESS : OB_ERROR;
         if (OB_SUCCESS == ret)
         {
@@ -341,7 +343,7 @@ namespace oceanbase
           {
             ret = OB_ERROR;
           }
-          else 
+          else
           {
             __v |= ((static_cast<uint64_t>(*(buf + tmp_pos++)) & 0x7f) << shift);
             *val = static_cast<int64_t>(__v);
@@ -368,14 +370,14 @@ namespace oceanbase
         return need_bytes;
 
       }
-     
-      /** 
+
+      /**
        * @brief Encode a integer (up to 32bit) in variable length encoding
-       * 
+       *
        * @param buf pointer to the destination buffer
        * @param end the end pointer to the destination buffer
        * @param val value to encode
-       * 
+       *
        * @return true - success, false - failed
        */
 
@@ -419,7 +421,7 @@ namespace oceanbase
         {
           if (data_len - tmp_pos < 1)
             ret = OB_ERROR;
-          else 
+          else
           {
             __v |=  (static_cast<uint32_t>(*(buf + tmp_pos++)) & 0x7f) << shift;
             *val = static_cast<int32_t>(__v);
@@ -435,7 +437,7 @@ namespace oceanbase
         memcpy(&tmp,&val,sizeof(tmp));
         return encoded_length_vi32(tmp);
       }
-      
+
       inline int encode_float(char *buf,const int64_t buf_len,int64_t& pos,float val)
       {
         int32_t tmp = 0;
@@ -453,7 +455,7 @@ namespace oceanbase
         }
         return ret;
       }
-     
+
       inline int64_t encoded_length_double(double val)
       {
         int64_t tmp = 0;
@@ -479,11 +481,11 @@ namespace oceanbase
         return ret;
       }
 
-      /** 
+      /**
        * @brief Computes the encoded length of vstr(int64,data,null)
-       * 
+       *
        * @param len string length
-       * 
+       *
        * @return the encoded length of str
        */
       inline int64_t encoded_length_vstr(int64_t len)
@@ -496,13 +498,13 @@ namespace oceanbase
         return encoded_length_vstr( str ? static_cast<int64_t>(strlen(str) + 1) : 0);
       }
 
-      /** 
+      /**
        * @brief get the decoded length of data len of vstr
-       * won't change the pos 
+       * won't change the pos
        * @return the length of data
        */
       inline int64_t decoded_length_vstr(const char *buf,const int64_t data_len,int64_t pos)
-      {  
+      {
         int64_t len = -1;
         int64_t tmp_pos = pos;
         if ( NULL == buf || data_len < 0 || pos < 0)
@@ -516,22 +518,22 @@ namespace oceanbase
         return len;
       }
 
-      /** 
+      /**
        * @brief Encode a buf as vstr(int64,data,null)
-       * 
+       *
        * @param buf pointer to the destination buffer
        * @param vbuf pointer to the start of the input buffer
        * @param len length of the input buffer
        */
       inline int encode_vstr(char *buf,const int64_t buf_len,int64_t& pos,const void *vbuf, int64_t len)
       {
-        int ret = ((NULL != buf) && (len >= 0) 
-                    && ((buf_len - pos) >= static_cast<int32_t>(encoded_length_vstr(len)))) 
+        int ret = ((NULL != buf) && (len >= 0)
+                    && ((buf_len - pos) >= static_cast<int32_t>(encoded_length_vstr(len))))
                   ?  OB_SUCCESS : OB_ERROR;
         if (OB_SUCCESS == ret)
         {
           /**
-           * even through it's a null string, we can serialize it with 
+           * even through it's a null string, we can serialize it with
            * lenght 0, and following a '\0'
            */
           ret = encode_vi64(buf,buf_len,pos,len);
@@ -555,7 +557,7 @@ namespace oceanbase
         const char *str = 0;
         int64_t tmp_len = 0;
         int64_t tmp_pos = pos;
-        
+
         if ((NULL == buf) || (data_len < 0) || (pos < 0) || (NULL == lenp))
         {
           //just _return_;
@@ -609,13 +611,70 @@ namespace oceanbase
         return str;
       }
 
-      /** 
-       * @brief encode ObNull type of ObObject into given buffer
-       * 
+
+      /**
+       * @brief encode ObBool type of ObObject into given buffer
+       *
        * @param buf pointer to the destination buffer
        * @param buf_len the length of the destination buffer
        * @param pos the current position of the destination buffer
-       * 
+       *
+       * @return on success,OB_SUCCESS is returned, on error,OB_ERROR is returned.
+       */
+      inline int64_t encoded_length_bool_type(bool val)
+      {
+        return static_cast<int64_t>(1 + encoded_length_bool(val));
+      }
+
+      inline int encode_bool_type(char *buf,int64_t buf_len,int64_t& pos, const bool val)
+      {
+        int ret = OB_SUCCESS;
+
+        if(OB_SUCCESS != encode_i8(buf,buf_len,pos,OB_BOOL_TYPE))
+        {
+          ret = OB_ERROR;
+        }
+        else if( OB_SUCCESS != encode_bool(buf,buf_len,pos,val))
+        {
+          ret = OB_ERROR;
+        }
+        return ret;
+      }
+
+      inline int decode_bool_type(const char *buf, const int64_t buf_len,int8_t first_byte, int64_t& pos, bool &val)
+      {
+        UNUSED(first_byte);
+
+        int ret = OB_ERROR;
+
+        if (NULL == buf || buf_len - pos < static_cast<int64_t>(sizeof(val)))
+        {
+          ret = OB_ERROR;
+        }
+        else
+        {
+          bool tmp = false;
+          if ( OB_SUCCESS != (ret = decode_bool(buf,buf_len,pos,&tmp)))
+          {
+            ret = OB_ERROR;
+          }
+          else
+          {
+            memcpy(&val,&tmp,sizeof(val));
+            ret = OB_SUCCESS;
+          }
+        }
+        return ret;
+      }
+
+
+      /**
+       * @brief encode ObNull type of ObObject into given buffer
+       *
+       * @param buf pointer to the destination buffer
+       * @param buf_len the length of the destination buffer
+       * @param pos the current position of the destination buffer
+       *
        * @return on success,OB_SUCCESS is returned, on error,OB_ERROR is returned.
        */
 
@@ -637,17 +696,17 @@ namespace oceanbase
         __v -= tmp;
         return static_cast<uint64_t>(__v);
       }
-      
 
-      /** 
+
+      /**
        * @brief encode a uint64_t into given buffer with given length
-       * 
+       *
        * @param buf       pointer to the destination buffer
        * @param buf_len   the length of buf
        * @param pos       the current position of the buffer
        * @param val       the value to encode
        * @param val_len   the encoded length of val in bytes
-       * 
+       *
        * @return  on success, OB_SUCCESS is returned
        */
       inline int __encode_uint_with_given_length(char *buf, const int64_t buf_len,
@@ -665,7 +724,7 @@ namespace oceanbase
           int64_t tmp_pos = pos;
           for(int64_t n=0;n < val_len; ++n)
           {
-            int8_t t = ((__v >> (n << 3)) & 0xff);
+            int8_t t = static_cast<int8_t>((__v >> (n << 3)) & 0xff);
             ret = encode_i8(buf,buf_len,tmp_pos,t);
             if (OB_SUCCESS != ret)
             {
@@ -716,11 +775,11 @@ namespace oceanbase
         return ret;
       }
 
-      /** 
+      /**
        * @brief Computes the encoded length of int(type,val)
-       * 
+       *
        * @param val the int value to be encoded
-       * 
+       *
        * @return the encoded length of int
        */
       inline int64_t encoded_length_int(int64_t val)
@@ -744,19 +803,102 @@ namespace oceanbase
         return len;
       }
 
+      inline int fast_encode(char *buf,int64_t& pos,int64_t val,bool is_add = false)
+      {
+        int ret = OB_SUCCESS;
+        int8_t first_byte = 0;
+        if (val < 0)
+        {
+          set_bit(first_byte,OB_INT_SIGN_BIT_POS);
+          val = -val;
+          //val = safe_int64_abs(val);
+        }
+        if (is_add)
+        {
+          set_bit(first_byte,OB_INT_OPERATION_BIT_POS);
+        }
+        if ((uint64_t)val <= OB_MAX_INT_1B)
+        {
+          first_byte |= static_cast<int8_t>(val);
+          buf[pos++] = first_byte;
+        }
+        else
+        {
+          first_byte |= OB_MAX_INT_1B;
+          if ((uint64_t)val <= OB_MAX_INT_4B)
+          {
+            if ((uint64_t)val <= OB_MAX_INT_2B)
+            {
+              first_byte = static_cast<int8_t>(first_byte + 1);
+              buf[pos++] = first_byte;
+              goto G_INT2B;
+            }
+            else
+            {
+              if ((uint64_t)val <= OB_MAX_INT_3B)
+              {
+                first_byte = static_cast<int8_t>(first_byte + 2);
+                buf[pos++] = first_byte;
+                goto G_INT3B;
+              }
+              else
+              {
+                first_byte = static_cast<int8_t>(first_byte + 3);
+                buf[pos++] = first_byte;
+                goto G_INT4B;
+              }
+            }
+          }
+          else
+          {
+            if ((uint64_t)val <= OB_MAX_INT_5B)
+            {
+              first_byte = static_cast<int8_t>(first_byte + 4);
+              buf[pos++] = first_byte;
+              goto G_INT5B;
+            }
+            else
+            {
+              if ((uint64_t)val <= OB_MAX_INT_7B)
+              {
+                first_byte = static_cast<int8_t>(first_byte + 5);
+                buf[pos++] = first_byte;
+                goto G_INT7B;
+              }
+              else
+              {
+                first_byte = static_cast<int8_t>(first_byte + 7);
+                buf[pos++] = first_byte;
+                goto G_INT9B;
+              }
+            }
+          }
 
-      /** 
+      G_INT9B: buf[pos++] = (int8_t)(val & 0xFF); val >>= 8;
+               buf[pos++] = (int8_t)(val & 0xFF); val >>= 8;
+      G_INT7B: buf[pos++] = (int8_t)(val & 0xFF); val >>= 8;
+               buf[pos++] = (int8_t)(val & 0xFF); val >>= 8;
+      G_INT5B: buf[pos++] = (int8_t)(val & 0xFF); val >>= 8;
+      G_INT4B: buf[pos++] = (int8_t)(val & 0xFF); val >>= 8;
+      G_INT3B: buf[pos++] = (int8_t)(val & 0xFF); val >>= 8;
+      G_INT2B: buf[pos++] = (int8_t)(val & 0xFF);
+        }
+
+        return ret;
+      }
+
+      /**
        * @brief encoded the ObInt type of ObObject into given buffer
-       * 
+       *
        * @param buf pointer to the destination buffer
        * @param buf_len the length of buf
        * @param pos the current position of the buffer
        * @param val the value of int
        * @param is_add operation type
-       * 
+       *
        * @return on success,OB_SUCCESS is returned,on error,OB_ERROR is returned.
        */
-      inline int encode_int(char *buf,const int64_t buf_len,int64_t& pos,int64_t val,bool is_add = false)
+      inline int encode_int_safe(char *buf,const int64_t buf_len,int64_t& pos,int64_t val,bool is_add = false)
       {
         int ret = OB_ERROR;
         int64_t len = encoded_length_int(val);
@@ -780,7 +922,7 @@ namespace oceanbase
 
           if (__v <= OB_MAX_INT_1B)
           {
-            first_byte |= __v;
+            first_byte = static_cast<int8_t>(first_byte | __v);
           }
           else
           {
@@ -796,7 +938,7 @@ namespace oceanbase
             {
               tmp_len -= 1;
             }
-            first_byte |= ((tmp_len - 1) + OB_MAX_INT_1B);
+            first_byte = static_cast<int8_t>(first_byte | ((tmp_len - 1) + OB_MAX_INT_1B));
           }
 
           if ( OB_SUCCESS != (ret = encode_i8(buf,buf_len,pos,first_byte)))
@@ -814,7 +956,99 @@ namespace oceanbase
         return ret;
       }
 
-      inline int decode_int(const char *buf,const int64_t data_len,int8_t first_byte,int64_t& pos,int64_t& val,bool& is_add)
+      inline int encode_int(char *buf,const int64_t buf_len,int64_t& pos,int64_t val,bool is_add = false)
+      {
+        if (buf_len - pos >= 10)
+        {
+          return fast_encode(buf, pos, val, is_add);
+        }
+        else
+        {
+          return encode_int_safe(buf, buf_len, pos, val, is_add);
+        }
+      }
+
+      inline int fast_decode(const char *buf,int8_t first_byte,int64_t& pos,
+        int64_t& val,bool& is_add)
+      {
+        int ret = OB_SUCCESS;
+
+        bool is_neg = test_bit(first_byte,OB_INT_SIGN_BIT_POS);
+        is_add = test_bit(first_byte,OB_INT_OPERATION_BIT_POS);
+        int8_t len_or_value = first_byte & OB_INT_VALUE_MASK;
+
+        if (len_or_value <= static_cast<int8_t>(OB_MAX_INT_1B))
+        {
+          val = is_neg ? static_cast<int64_t>(-len_or_value) : static_cast<int64_t>(len_or_value);
+        }
+        else
+        {
+          val = 0;
+          int64_t npos = 0;
+          //int64_t len = len_or_value - OB_MAX_INT_1B;
+          if ((uint8_t)len_or_value <= OB_MAX_INT_1B + 3)
+          {
+            if (len_or_value == OB_MAX_INT_1B + 1)
+            {
+              pos ++;
+              npos = pos;
+              goto D_INT2B;
+            }
+            else if (len_or_value == OB_MAX_INT_1B + 2)
+            {
+              pos += 2;
+              npos = pos;
+              goto D_INT3B;
+            }
+            else
+            {
+              pos += 3;
+              npos = pos;
+              goto D_INT4B;
+            }
+          }
+          else
+          {
+            if (len_or_value == OB_MAX_INT_1B + 4)
+            {
+              pos += 4;
+              npos = pos;
+              goto D_INT5B;
+            }
+            else if (len_or_value == OB_MAX_INT_1B + 5)
+            {
+              pos += 6;
+              npos = pos;
+              goto D_INT7B;
+            }
+            else
+            {
+              pos += 8;
+              npos = pos;
+              goto D_INT9B;
+            }
+          }
+
+      D_INT9B: val |= (uint8_t)buf[--npos]; val <<= 8;
+               val |= (uint8_t)buf[--npos]; val <<= 8;
+      D_INT7B: val |= (uint8_t)buf[--npos]; val <<= 8;
+               val |= (uint8_t)buf[--npos]; val <<= 8;
+      D_INT5B: val |= (uint8_t)buf[--npos]; val <<= 8;
+      D_INT4B: val |= (uint8_t)buf[--npos]; val <<= 8;
+      D_INT3B: val |= (uint8_t)buf[--npos]; val <<= 8;
+      D_INT2B: val |= (uint8_t)buf[--npos];
+
+          if (is_neg)
+          {
+            val = -val;
+          }
+        }
+
+        return ret;
+      }
+
+      inline int decode_int_safe(const char *buf,const int64_t data_len,
+        int8_t first_byte,int64_t& pos,int64_t& val,bool& is_add)
       {
         int ret = OB_ERROR;
         if ((NULL == buf) || (data_len - pos < 0))
@@ -853,9 +1087,23 @@ namespace oceanbase
         return ret;
       }
 
+      inline int decode_int(const char *buf,const int64_t data_len,int8_t first_byte,
+        int64_t& pos,int64_t& val,bool& is_add)
+      {
+        (void)(data_len);
+        if (data_len - pos >= 9)
+        {
+          return fast_decode(buf, first_byte, pos, val, is_add);
+        }
+        else
+        {
+          return decode_int_safe(buf, data_len, first_byte, pos, val, is_add);
+        }
+      }
+
       inline int64_t encoded_length_str_len(int64_t len)
       {
-        int64_t ret = -1; 
+        int64_t ret = -1;
         if (len < 0)
         {
           ret = -1;
@@ -877,7 +1125,7 @@ namespace oceanbase
         }
         return ret;
       }
-      
+
       inline int64_t encoded_length_str(int64_t len)
       {
         return encoded_length_str_len(len) + len;
@@ -898,11 +1146,11 @@ namespace oceanbase
 
           if ( 1 == len_size)
           {
-            first_byte |= (len & 0xff);
+            first_byte = static_cast<int8_t>(first_byte | (len & 0xff));
           }
           else
           {
-            first_byte |= (len_size  - 1 + OB_MAX_1B_STR_LEN);
+            first_byte = static_cast<int8_t>(first_byte | (len_size  - 1 + OB_MAX_1B_STR_LEN));
           }
 
           if (OB_SUCCESS != (ret = encode_i8(buf,buf_len,pos,first_byte)))
@@ -913,7 +1161,7 @@ namespace oceanbase
           {
             for(int n=0;n < len_size - 1;++n)
             {
-              if (OB_SUCCESS != (ret = encode_i8(buf,buf_len,pos,len >> (n << 3))))
+              if (OB_SUCCESS != (ret = encode_i8(buf,buf_len,pos,static_cast<int8_t>(len >> (n << 3)))))
               {
                 break;
               }
@@ -942,7 +1190,7 @@ namespace oceanbase
           int8_t len_or_value = first_byte & OB_VARCHAR_LEN_MASK;
           int64_t str_len = 0;
           if (len_or_value <= OB_MAX_1B_STR_LEN)
-          { 
+          {
             //OK ,we have already got the length of str
             str_len = static_cast<int64_t>(len_or_value);
             ret = OB_SUCCESS;
@@ -968,7 +1216,7 @@ namespace oceanbase
           {
             str = buf + pos;
             pos += str_len;
-            lenp = str_len;
+            lenp = static_cast<int32_t>(str_len);
           }
           else
           {
@@ -1016,7 +1264,7 @@ namespace oceanbase
         {
           ret = OB_ERROR;
         }
-        else 
+        else
         {
           int32_t tmp = 0;
           if ( OB_SUCCESS != (ret = decode_i32(buf,data_len,pos,&tmp)))
@@ -1040,6 +1288,123 @@ namespace oceanbase
       inline int64_t encoded_length_double_type()
       {
         return static_cast<int64_t>(sizeof(double) + 1);
+      }
+
+      inline int encode_decimal_type(char *buf, const int64_t buf_len, int64_t &pos, bool is_add,
+                                     int8_t precision, int8_t scale, int8_t vscale, int8_t nwords, const uint32_t *words)
+      {
+        int err = OB_SUCCESS;
+        if (buf == NULL || buf_len <= 0 || pos >= buf_len || NULL == words)
+        {
+          err = OB_INVALID_ARGUMENT;
+        }
+        int8_t first_byte = OB_DECIMAL_TYPE;
+        if (OB_SUCCESS == err)
+        {
+          err = encode_i8(buf, buf_len, pos, first_byte);
+        }
+        if (OB_SUCCESS == err)
+        {
+          int8_t op = is_add ? 1 : 0;
+          err = encode_i8(buf, buf_len, pos, op);
+        }
+        if (OB_SUCCESS == err)
+        {
+          err = encode_i8(buf, buf_len, pos, precision);
+        }
+        if (OB_SUCCESS == err)
+        {
+          err = encode_i8(buf, buf_len, pos, scale);
+        }
+        if (OB_SUCCESS == err)
+        {
+          err = encode_i8(buf, buf_len, pos, vscale);
+        }
+        if (OB_SUCCESS == err)
+        {
+          err = encode_i8(buf, buf_len, pos, nwords);
+        }
+        if (OB_SUCCESS == err)
+        {
+          for (int8_t i = 0; i < nwords; ++i)
+          {
+            if (OB_SUCCESS != (err = encode_vi32(buf, buf_len, pos, static_cast<int32_t>(words[i]))))
+            {
+              break;
+            }
+          }
+        }
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(WARN, "fail to encode decimal. err = %d", err);
+        }
+        return err;
+      }
+
+      inline int decode_decimal_type(const char *buf, const int64_t buf_len, int64_t &pos, bool &is_add,
+                                     int8_t &precision, int8_t &scale, int8_t &vscale, int8_t &nwords, uint32_t *words)
+      {
+        int err = OB_SUCCESS;
+        if (NULL == buf || buf_len <= 0 || pos >= buf_len || NULL == words)
+        {
+          err = OB_INVALID_ARGUMENT;
+        }
+        else
+        {
+          int8_t op = 0;
+          if (OB_SUCCESS == (err = decode_i8(buf, buf_len, pos, &op)))
+          {
+            is_add = op;
+          }
+        }
+        if (OB_SUCCESS == err)
+        {
+          err = decode_i8(buf, buf_len, pos, &precision);
+        }
+        if (OB_SUCCESS == err)
+        {
+          err = decode_i8(buf, buf_len, pos, &scale);
+        }
+        if (OB_SUCCESS == err)
+        {
+          err = decode_i8(buf, buf_len, pos, &vscale);
+        }
+        if (OB_SUCCESS == err)
+        {
+          err = decode_i8(buf, buf_len, pos, &nwords);
+        }
+        if (OB_SUCCESS == err)
+        {
+          for (int8_t i = 0; i < nwords; ++i)
+          {
+            if (OB_SUCCESS != (err = decode_vi32(buf, buf_len, pos, reinterpret_cast<int32_t*>(&words[i]))))
+            {
+              break;
+            }
+          }
+        }
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(WARN, "fail to decode decimal, err = %d", err);
+        }
+        return err;
+      }
+
+      inline int64_t encoded_length_decimal_type(int8_t nwords, const uint32_t *words)
+      {
+        int64_t ret = 6;
+        if (OB_UNLIKELY(NULL == words))
+        {
+          TBSYS_LOG(ERROR, "null decimal words");
+        }
+        else
+        {
+          for (int8_t i = 0; i < nwords; ++i)
+          {
+            ret += static_cast<int32_t>(encoded_length_vi32(words[i]));
+          }
+        }
+        return ret;
       }
 
       inline int encode_double_type(char *buf,const int64_t buf_len,int64_t& pos,double val,const bool is_add)
@@ -1067,7 +1432,7 @@ namespace oceanbase
 
         return ret;
       }
-      
+
       inline int decode_double_type(const char *buf,const int64_t data_len,int8_t first_byte,int64_t& pos,double& val,bool& is_add)
       {
         int ret = OB_ERROR;
@@ -1075,7 +1440,7 @@ namespace oceanbase
         {
           ret = OB_ERROR;
         }
-        else 
+        else
         {
           int64_t tmp = 0;
           if ( OB_SUCCESS != (ret = decode_i64(buf,data_len,pos,&tmp)))
@@ -1099,7 +1464,7 @@ namespace oceanbase
           len = 5;
         else if (tmp_value <= OB_MAX_6B)
           len = 7;
-        else 
+        else
           len = 9;
         return len;
       }
@@ -1128,7 +1493,7 @@ namespace oceanbase
           {
             first_byte |= 2;
           }
-          
+
           if ( OB_SUCCESS == ( ret = encode_i8(buf,buf_len,tmp_pos,first_byte)))
           {
             uint64_t __v = safe_int64_abs(val);
@@ -1225,7 +1590,7 @@ namespace oceanbase
           int64_t __v = 0;
 
           if ( OB_SUCCESS == (ret = __decode_time_type(buf,data_len,first_byte,pos,__v)))
-          { 
+          {
             val = is_neg ? -__v : __v;
           }
         }
@@ -1258,7 +1623,7 @@ namespace oceanbase
         }
         return ret;
       }
-      
+
       inline int decode_precise_datetime_type(const char *buf,const int64_t data_len,int8_t first_byte,int64_t& pos,int64_t& val,bool& is_add)
       {
         int ret = OB_ERROR;
@@ -1274,7 +1639,7 @@ namespace oceanbase
           int64_t __v = 0;
 
           if ( OB_SUCCESS == (ret = __decode_time_type(buf,data_len,first_byte,pos,__v)))
-          { 
+          {
             val = is_neg ? -__v : __v;
           }
         }
@@ -1326,11 +1691,17 @@ namespace oceanbase
         if (NULL == buf || buf_len - pos <= 0 || val < 0)
         {
           ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fail to encode_createtime_type: buf[%p], buf_len[%ld], pos[%ld] val[%ld]",
+             buf, buf_len, pos, val);
         }
         else
         {
           int8_t first_byte = OB_CREATETIME_TYPE;
           ret = __encode_time_type(buf,buf_len,first_byte,pos,val);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "fail to __encode_time_type: ret = %d", ret);
+          }
         }
         return ret;
       }
@@ -1354,7 +1725,7 @@ namespace oceanbase
         return encoded_length_vi64(value) + 1;
       }
 
-      inline int64_t encode_extend_type(char *buf,const int64_t buf_len,int64_t& pos,const int64_t val)
+      inline int encode_extend_type(char *buf,const int64_t buf_len,int64_t& pos,const int64_t val)
       {
         int ret = OB_SUCCESS;
         int64_t len = encoded_length_extend(val);
@@ -1383,4 +1754,3 @@ namespace oceanbase
 } /* oceanbase*/
 
 #endif //OCEANBASE_COMMON_SERIALIZATION_H
-

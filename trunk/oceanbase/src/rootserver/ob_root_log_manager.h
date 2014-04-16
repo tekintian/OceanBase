@@ -1,19 +1,15 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  * Version: $Id$
  *
- * ob_root_log_manager.h for ...
- *
  * Authors:
- *   qushan <qushan@taobao.com>
- *
+ *   ruohai <ruohai@taobao.com>
  */
-
 
 #ifndef OCEANBASE_ROOT_SERVER_LOG_MANAGER_H_
 #define OCEANBASE_ROOT_SERVER_LOG_MANAGER_H_
@@ -35,12 +31,15 @@ namespace oceanbase
         ~ObRootLogManager();
 
       public:
-        int init(ObRootServer2* root_server, common::ObSlaveMgr* slave_mgr);
+        int init(ObRootServer2* root_server, common::ObSlaveMgr* slave_mgr, const common::ObServer* server);
 
         /// @brief replay all commit log from replay point
         /// after initialization, invoke this method to replay all commit log
         int replay_log();
         int do_after_recover_check_point();
+        int write_log_hook(const bool is_master,
+                           const ObLogCursor start_cursor, const ObLogCursor end_cursor,
+                           const char* log_data, const int64_t data_len);
 
         int recover_checkpoint(uint64_t ckpt_id);
 
@@ -74,4 +73,3 @@ namespace oceanbase
 } /* oceanbase */
 
 #endif /* end of include guard: OCEANBASE_ROOT_SERVER_LOG_MANAGER_H_ */
-

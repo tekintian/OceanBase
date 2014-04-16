@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_root_fetch_thread.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
 #include "ob_root_fetch_thread.h"
 
 namespace oceanbase
@@ -28,7 +13,7 @@ namespace oceanbase
     int ObRootFetchThread::wait_recover_done()
     {
       int count = 0;
-      while (!is_recover_done_)
+      while (!is_recover_done_ && !_stop)
       {
         count++;
         if ((count % 100) == 0)
@@ -37,14 +22,14 @@ namespace oceanbase
         }
         usleep(WAIT_INTERVAL);
       }
-
+      TBSYS_LOG(INFO, "wait recover done:recover_ret[%d], recover_done[%d], stop[%d]", recover_ret_, is_recover_done_, _stop);
       return recover_ret_;
     }
 
     int ObRootFetchThread::got_ckpt(uint64_t ckpt_id)
     {
 
-      TBSYS_LOG(DEBUG, "fetch got checkpoint %d", ckpt_id);
+      TBSYS_LOG(DEBUG, "fetch got checkpoint %lu", ckpt_id);
 
       if (log_manager_ == NULL)
       {
@@ -58,7 +43,7 @@ namespace oceanbase
 
       is_recover_done_ = true;
 
-      TBSYS_LOG(INFO, "recover from checkpoint %d return %d", ckpt_id, recover_ret_);
+      TBSYS_LOG(INFO, "recover from checkpoint %lu return %d", ckpt_id, recover_ret_);
 
       return recover_ret_;
     }
@@ -70,4 +55,3 @@ namespace oceanbase
 
   } /* rootserver */
 } /* oceanbase */
-

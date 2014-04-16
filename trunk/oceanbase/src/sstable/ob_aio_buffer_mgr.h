@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_aio_buffer_mgr.h
+ * ob_aio_buffer_mgr.h for manage aio buffer. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef OCEANBASE_SSTABLE_OB_AIO_BUFFER_MGR_H_
@@ -241,6 +239,43 @@ namespace oceanbase
       int64_t cur_block_idx_;       //which block is reading in crrent block array
     };
 
+    struct ObIOStat
+    {
+      ObIOStat()
+      {
+        reset();
+      }
+
+      void reset()
+      {
+        memset(this, 0, sizeof(ObIOStat));
+      }
+
+      ObIOStat& operator += (const ObIOStat& stat)
+      {
+        total_read_size_ += stat.total_read_size_;
+        total_read_times_ += stat.total_read_times_;
+        total_read_blocks_ += stat.total_read_blocks_;
+        total_blocks_ += stat.total_blocks_;
+        total_size_ += stat.total_size_;
+        total_cached_size_ += stat.total_cached_size_;
+        if (stat.sstable_id_ > 0)
+        {
+          sstable_id_ = stat.sstable_id_;
+        }
+
+        return *this;
+      }
+
+      int64_t total_read_size_;
+      int64_t total_read_times_;
+      int64_t total_read_blocks_;
+      int64_t total_blocks_;
+      int64_t total_size_;
+      int64_t total_cached_size_;
+      uint64_t sstable_id_;
+    };
+
     enum ObDoubleAIOBufferState
     {
       FREE_FREE,
@@ -312,6 +347,7 @@ namespace oceanbase
        * @param buffer buffer to return, buffer stores the data to 
        *               read
        * @param from_cache whether the block data is from cache 
+       * @param check_crc whether check the block data record 
        * 
        * @return int if success, returns OB_SUCCESS, else returns 
        *         OB_ERROR or OB_AIO_TIMEOUT or OB_AIO_EOF
@@ -321,7 +357,8 @@ namespace oceanbase
                     const int64_t offset,
                     const int64_t size,
                     const int64_t timeout_us, 
-                    char*& buffer, bool& from_cache);
+                    char*& buffer, bool& from_cache,
+                    const bool check_crc = true);
 
 
       /**
@@ -346,6 +383,26 @@ namespace oceanbase
         return (get_state() == FREE_FREE);
       }
 
+      inline const ObIOStat& get_aio_stat() const
+      {
+        return aio_stat_;
+      }
+
+      inline bool is_copy2cache() const
+      {
+        return copy2cache_;
+      }
+
+      inline const char* print_state() const
+      {
+        return get_state_str(get_state());
+      }
+
+      inline const bool is_wait_timeout() const
+      {
+        return is_wait_timeout_;
+      }
+
     private:
       inline bool can_fit_aio_buffer(const int64_t size)
       {
@@ -356,10 +413,12 @@ namespace oceanbase
       inline bool is_preread_data_valid()
       {
         int64_t preread_buf_idx = (cur_buf_idx_ + 1) % AIO_BUFFER_COUNT;
+        int64_t block_index = 
+          reverse_scan_ ? end_preread_block_idx_ - 1 : preread_block_idx_;
 
         return (end_preread_block_idx_ > preread_block_idx_ 
                 && buffer_[preread_buf_idx].is_data_valid(sstable_id_, 
-                   block_[preread_block_idx_].offset_, block_[preread_block_idx_].size_));
+                   block_[block_index].offset_, block_[block_index].size_));
       }
 
       void reset();
@@ -431,6 +490,7 @@ namespace oceanbase
       bool get_first_block_;          //whether it gets the first block
       bool copy_from_cache_;          //whether copy block from block cache
       bool update_buf_range_;         //whether update aio buffer read range
+      bool is_wait_timeout_;          //whether aio buffer wait timeout
 
       uint64_t sstable_id_;           //sstable id to read
       ObBlockCache* block_cache_;     //block cache
@@ -447,6 +507,9 @@ namespace oceanbase
       ObAIOBuffer buffer_[AIO_BUFFER_COUNT];      //two aio buffer
       ObAIOEventMgr event_mgr_[AIO_BUFFER_COUNT]; //two aio event manager
       int64_t cur_buf_idx_;           //current aio buffer to use to read block
+
+      //statistic
+      ObIOStat aio_stat_;
     };
 
     class ObThreadAIOBufferMgrArray
@@ -462,19 +525,32 @@ namespace oceanbase
       int wait_all_aio_buf_mgr_free(const int64_t timeout_us);
       bool check_all_aio_buf_free();
 
+      void add_stat(const ObIOStat& stat);
+      const char* get_thread_aio_stat_str();
+
     private:
       struct ObThreadAIOBufferMgrItem
       {
         ObThreadAIOBufferMgrItem() 
-        : sstable_id_(common::OB_INVALID_ID), table_id_(common::OB_INVALID_ID), 
-          column_group_id_(common::OB_INVALID_ID), aio_buf_mgr_(NULL)
         {
+          reset();
+          aio_buf_mgr_ = NULL;
+        }
 
+        void reset()
+        {
+          sstable_id_ = common::OB_INVALID_ID;
+          table_id_ = common::OB_INVALID_ID;
+          column_group_id_ = common::OB_INVALID_ID;
+          disk_no_ = 0;
+          timeout_time_ = 0;
         }
 
         uint64_t sstable_id_;
         uint64_t table_id_;
         uint64_t column_group_id_;
+        int64_t disk_no_;
+        int64_t timeout_time_;
         ObAIOBufferMgr* aio_buf_mgr_;
       };
 
@@ -485,12 +561,19 @@ namespace oceanbase
     private:
       static const int64_t MAX_THREAD_AIO_BUFFER_MGR = 
         common::OB_MAX_COLUMN_GROUP_NUMBER * common::OB_MAX_THREAD_READ_SSTABLE_NUMBER;
+      static const int64_t DISK_WARN_AIO_TIMEOUT_US = common::OB_AIO_TIMEOUT_US * 4;
 
       DISALLOW_COPY_AND_ASSIGN(ObThreadAIOBufferMgrArray);
       ObThreadAIOBufferMgrItem item_array_[MAX_THREAD_AIO_BUFFER_MGR];
       int64_t item_count_;
       common::PageArena<char> alloc_;
+      ObIOStat thread_aio_stat_;
     };
+
+    //global function used to wait aio buffer free
+    int wait_aio_buffer();
+    void add_io_stat(const ObIOStat& stat);
+    const char* get_io_stat_str();
   } // namespace oceanbase::sstable
 } // namespace Oceanbase
 #endif //OCEANBASE_SSTABLE_OB_AIO_BUFFER_MGR_H_

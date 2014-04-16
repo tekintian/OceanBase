@@ -1,18 +1,15 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_switch_cache_utility.cpp
+ * ob_switch_cache_utility.cpp for switch block cache and block 
+ * index cache. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
- * Changes: 
- *     qushan <qushan@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #include "tblog.h"
@@ -61,7 +58,7 @@ namespace oceanbase
       int status                = OB_SUCCESS;
       uint64_t table_id         = OB_INVALID_ID;
       uint64_t column_group_id  = OB_INVALID_ID;
-      ObString start_key;
+      ObRowkey start_key;
 
       if (src_tablet_version < 0 || dst_tablet_version < 0)
       {

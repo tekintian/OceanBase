@@ -1,23 +1,26 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
  *  
- * Version: 5567
- *
- * ob_aio_buffer_mgr.cpp
+ * ob_aio_buffer_mgr.cpp for manage aio buffer. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #include <tblog.h>
 #include "common/ob_define.h"
+#include "common/ob_record_header.h"
+#include "common/ob_disk_checker.h"
+#include "common/utility.h"
 #include "ob_aio_buffer_mgr.h"
 #include "ob_sstable_block_index_v2.h"
 #include "ob_blockcache.h"
+#include "ob_sstable_writer.h"
+#include "ob_disk_path.h"
 
 namespace oceanbase 
 {
@@ -110,9 +113,13 @@ namespace oceanbase
         fileinfo_cache_->revert_fileinfo(file_info_);
       }
 
-      if (0 == ret_code && WAIT == state_)
+      if (WAIT == state_)
       {
         state_ = READY;
+      }
+
+      if (0 == ret_code && ret_size >= 0)
+      {
         if (ret_size == buf_to_read_)
         {
           buf_read_ = buf_to_read_;
@@ -125,9 +132,11 @@ namespace oceanbase
       }
       else
       {
+        buf_read_ = 0;
         TBSYS_LOG(WARN, "failed aio read, ret_size=%ld, buf_to_read_=%ld, "
-                        "ret_code=%d, state=%d, error=%s", 
-                  ret_size, buf_to_read_, ret_code, state_, strerror(ret_code));
+                        "ret_code=%d, state=%d, ret_size=%ld, error=%s", 
+                  ret_size, buf_to_read_, ret_code, state_, ret_size, 
+                  strerror(static_cast<int32_t>(-ret_size)));
       }
     }
 
@@ -449,7 +458,8 @@ namespace oceanbase
     ObAIOBufferMgr::ObAIOBufferMgr() 
     : inited_(false), state_(FREE_FREE), reverse_scan_(false), 
       copy2cache_(false), get_first_block_(false), copy_from_cache_(false), 
-      update_buf_range_(false), sstable_id_(OB_INVALID_ID), block_cache_(NULL), 
+      update_buf_range_(false), is_wait_timeout_(false),
+      sstable_id_(OB_INVALID_ID), block_cache_(NULL), 
       block_(NULL), block_buf_size_(DEFAULT_BLOCK_BUF_SIZE), block_count_(0), 
       cur_block_idx_(0), cur_read_block_idx_(0), end_curread_block_idx_(0),
       preread_block_idx_(0), end_preread_block_idx_(0), cur_buf_idx_(0)
@@ -480,7 +490,7 @@ namespace oceanbase
 
       if (NULL == ctx)
       {
-        if (0 != io_setup(max_events, &ctx))
+        if (0 != io_setup(static_cast<int>(max_events), &ctx))
         {
           TBSYS_LOG(WARN, "failed to setup io context, ctx=%p, error:%s", 
                     ctx, strerror(errno));
@@ -558,6 +568,7 @@ namespace oceanbase
       get_first_block_ = false;
       copy_from_cache_ = false;
       update_buf_range_ = false;
+      is_wait_timeout_ = false;
       sstable_id_ = OB_INVALID_ID;
       block_cache_ = NULL;
       block_count_ = 0;
@@ -567,6 +578,7 @@ namespace oceanbase
       preread_block_idx_ = 0;
       end_preread_block_idx_ = 0;
       cur_buf_idx_ = 0;
+      aio_stat_.reset();
     }
 
     int ObAIOBufferMgr::advise(ObBlockCache& block_cache,
@@ -654,6 +666,15 @@ namespace oceanbase
             ret = OB_ERROR;
             break;
           }
+        }
+
+        if (OB_SUCCESS == ret)
+        {
+          aio_stat_.sstable_id_ = sstable_id_;
+          aio_stat_.total_blocks_ = block_count_;
+          aio_stat_.total_size_ = 
+            block_[block_count_ - 1].offset_ + block_[block_count_ - 1].size_
+            - block_[0].offset_;
         }
       }
 
@@ -755,6 +776,7 @@ namespace oceanbase
           //copy block to aio buffer from block cache
           block_[block_idx].cached_ = true;
           copy_from_cache_ = true;
+          aio_stat_.total_cached_size_ += block_size;
           ret = buffer_[cur_buf_idx_].put_cache_block(
             buffer_handle.get_buffer(), block_size, reverse_scan);
         }
@@ -797,6 +819,7 @@ namespace oceanbase
           //copy block to aio buffer from block cache
           block_[block_idx].cached_ = true;
           copy_from_cache_ = true;
+          aio_stat_.total_cached_size_ += block_size;
           ret = buffer_[preread_buf_idx].put_cache_block(
             buffer_handle.get_buffer(), block_size, reverse_scan);
         }
@@ -997,8 +1020,8 @@ namespace oceanbase
             {
               if (!reverse_scan)
               {
-                end_curread_block_idx_ = i;
-                preread_block_idx_ = i;
+                end_curread_block_idx_ = i + 1;
+                preread_block_idx_ = i + 1;
               }
               else
               {
@@ -1036,48 +1059,46 @@ namespace oceanbase
       int64_t preread_size    = 0;
       int64_t preread_buf_idx = (cur_buf_idx_ + 1) % AIO_BUFFER_COUNT;
 
-      if (check_cache && 0 == buffer_[preread_buf_idx].get_read_size() 
-          && preread_block_idx_ < block_count_)
+      /**
+       * current aio buffer is filled some block data, but preread aio 
+       * buffer is null, so preread aio buffer need read block data 
+       * from sstable file. the following code caculate the preread 
+       * block range if necessary. 
+       */
+      if (check_cache && 0 == buffer_[preread_buf_idx].get_read_size()
+          && !reverse_scan && preread_block_idx_ < block_count_)
       {
-        /**
-         * current aio buffer is filled some block data, but preread aio 
-         * buffer is null, so preread aio buffer need read block data 
-         * from sstable file. the following code caculate the preread 
-         * block range if necessary. 
-         */
-        if (!reverse_scan && preread_block_idx_ < block_count_)
+        for (i = preread_block_idx_; i < block_count_; ++i)
         {
-          for (i = preread_block_idx_; i < block_count_; ++i)
+          preread_size += block_[i].size_;
+          if (!can_fit_aio_buffer(preread_size))
           {
-            preread_size += block_[i].size_;
-            if (!can_fit_aio_buffer(preread_size))
-            {
-              end_preread_block_idx_ = i;
-              break;
-            }
-          }
-
-          if (block_count_ == i)
-          {
-            end_preread_block_idx_ = block_count_;
+            end_preread_block_idx_ = i;
+            break;
           }
         }
-        else if (reverse_scan && preread_block_idx_ > 0)
-        {
-          for (i = preread_block_idx_ - 1; i >= 0; --i)
-          {
-            preread_size += block_[i].size_;
-            if (!can_fit_aio_buffer(preread_size))
-            {
-              preread_block_idx_ = i + 1; 
-              break;
-            }
-          }
 
-          if (i < 0)
+        if (block_count_ == i)
+        {
+          end_preread_block_idx_ = block_count_;
+        }
+      }
+      else if (check_cache && 0 == buffer_[preread_buf_idx].get_read_size()
+               && reverse_scan && end_preread_block_idx_ > 0)
+      {
+        for (i = end_preread_block_idx_ - 1; i >= 0; --i)
+        {
+          preread_size += block_[i].size_;
+          if (!can_fit_aio_buffer(preread_size))
           {
-            preread_block_idx_ = 0;
+            preread_block_idx_ = i + 1; 
+            break;
           }
+        }
+
+        if (i < 0)
+        {
+          preread_block_idx_ = 0;
         }
       }
       else
@@ -1120,7 +1141,7 @@ namespace oceanbase
       for (i = start; reverse_scan ? (i >= end) : (i < end) && OB_SUCCESS == ret;)
       {
         ObBufferHandle buffer_handle;
-        block_size = block_[i].size_;
+        block_size = static_cast<int32_t>(block_[i].size_);
         if (check_cache)
         {
           block_size = block_cache_->get_cache_block(sstable_id_, block_[i].offset_,
@@ -1160,7 +1181,7 @@ namespace oceanbase
         }
         else
         {
-          TBSYS_LOG(WARN, "get block from block cache failed, block_size=%ld, "
+          TBSYS_LOG(WARN, "get block from block cache failed, block_size=%d, "
                           "block_[%ld].size_=%ld, check_cache=%d", 
                     block_size, i, block_[i].size_, check_cache);
           ret = OB_ERROR;
@@ -1270,6 +1291,10 @@ namespace oceanbase
       TBSYS_LOG(DEBUG, "stop state machine, state: %s, ret=%d", 
                 get_state_str(state_), ret);
       stop = true;
+      if (OB_AIO_TIMEOUT == ret)
+      {
+        is_wait_timeout_ = true;
+      }
     }
 
     int ObAIOBufferMgr::update_read_range(const bool check_cache,
@@ -1351,6 +1376,7 @@ namespace oceanbase
             {
               //copy block to preread aio buffer from block cache
               block_[i].cached_ = true;
+              aio_stat_.total_cached_size_ += block_[i].size_;
               ret = preread_aio_buf.put_cache_block(buffer_handle.get_buffer(), 
                                                     block_[i].size_, reverse_scan);
             }
@@ -1430,6 +1456,9 @@ namespace oceanbase
           {
             aio_buf.set_state(WAIT);
             cur_buf_idx_ = aio_buf_idx;
+            aio_stat_.total_read_size_ += aio_buf.get_toread_size();
+            aio_stat_.total_read_times_ += 1;
+            aio_stat_.total_read_blocks_ += end_curread_block_idx_ - cur_read_block_idx_;
             ret = event_mgr.aio_wait(timeout_us);
           }
         }
@@ -1466,6 +1495,9 @@ namespace oceanbase
                                               *preread_aio_buf);
           if (OB_SUCCESS == ret)
           {
+            aio_stat_.total_read_size_ += preread_aio_buf->get_toread_size();
+            aio_stat_.total_read_times_ += 1;
+            aio_stat_.total_read_blocks_ += end_preread_block_idx_ - preread_block_idx_;
             preread_aio_buf->set_state(WAIT);
           }
         }
@@ -1979,7 +2011,8 @@ namespace oceanbase
                                   const int64_t offset,
                                   const int64_t size,
                                   const int64_t timeout_us, 
-                                  char*& buffer, bool& from_cache)
+                                  char*& buffer, bool& from_cache,
+                                  const bool check_crc)
     {
       int ret                 = OB_SUCCESS;
       int64_t cur_timeout_us  = timeout_us;
@@ -2035,11 +2068,26 @@ namespace oceanbase
         ret = get_block_state_machine(sstable_id, offset, size, cur_timeout_us, buffer);
       }
 
-      //copy to block cache if necessary
-      if (OB_SUCCESS == ret && NULL != buffer && copy_to_cache)
+      if (OB_SUCCESS == ret && NULL != buffer)
       {
-        //ignore the return value of copy2cache
-        copy2cache(sstable_id, offset, size, buffer);
+        if (check_crc && !from_cache)
+        {
+          ret = ObRecordHeader::check_record(buffer, 
+            size, ObSSTableWriter::DATA_BLOCK_MAGIC);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "failed to check block record, sstable_id=%lu "
+                            "offset=%ld nbyte=%ld",
+                      sstable_id, offset, size);   
+          }
+        }
+
+        //copy to block cache if necessary
+        if (OB_SUCCESS == ret && copy_to_cache)
+        {
+          //ignore the return value of copy2cache
+          copy2cache(sstable_id, offset, size, buffer);
+        }
       }
 
       return ret;
@@ -2067,12 +2115,25 @@ namespace oceanbase
           //if the block is not in block cache, copy it into block cache
           if (!cached_)
           {
-            value.nbyte = dataindex_key.size;
-            status = block_cache_->get_kv_cache().put(dataindex_key, value);
-            if (OB_SUCCESS != status && OB_ENTRY_EXIST != status)
+            status = ObRecordHeader::check_record(value.buffer, 
+              dataindex_key.size, ObSSTableWriter::DATA_BLOCK_MAGIC);
+            if (OB_SUCCESS != status)
             {
-              TBSYS_LOG(WARN, "failed to copy block data to cache, status=%d", status);
-              break;
+              TBSYS_LOG(WARN, "failed to check block record, sstable_id=%lu "
+                              "offset=%ld nbyte=%ld",
+                        dataindex_key.sstable_id, dataindex_key.offset, 
+                        dataindex_key.size);
+              break;   
+            }
+            else
+            {
+              value.nbyte = dataindex_key.size;
+              status = block_cache_->get_kv_cache().put(dataindex_key, value);
+              if (OB_SUCCESS != status && OB_ENTRY_EXIST != status)
+              {
+                TBSYS_LOG(WARN, "failed to copy block data to cache, status=%d", status);
+                break;
+              }
             }
           }
         }
@@ -2094,12 +2155,12 @@ namespace oceanbase
       ObAIOEventMgr& cur_event_mgr        = event_mgr_[cur_buf_idx_];
       ObAIOEventMgr& preread_event_mgr    = event_mgr_[preread_buf_idx];
 
-      if (timeout_us > 0 && WAIT == cur_aio_state)
+      if (timeout_us >= 0 && WAIT == cur_aio_state)
       {
         ret = cur_event_mgr.aio_wait(timeout_us);
       }
 
-      if (OB_AIO_TIMEOUT != ret && timeout_us > 0 && WAIT == prepread_aio_state)
+      if (OB_AIO_TIMEOUT != ret && timeout_us >= 0 && WAIT == prepread_aio_state)
       {
         ret = preread_event_mgr.aio_wait(timeout_us);
       }
@@ -2125,6 +2186,7 @@ namespace oceanbase
           }
           preread_aio_buf.set_state(FREE);
         }
+        reset();
       }
 
       return ret;
@@ -2187,13 +2249,16 @@ namespace oceanbase
     {
       ObAIOBufferMgr* aio_buf_mgr = NULL;
       int64_t i                   = 0;
+      int err                     = OB_SUCCESS;
+      int64_t disk_no = get_sstable_disk_no(sstable_id);
 
       //first try to find a exact fit item
       for (i = 0; i < item_count_; ++i)
       {
         if (sstable_id == item_array_[i].sstable_id_ 
             && table_id == item_array_[i].table_id_ 
-            && column_group_id == item_array_[i].column_group_id_)
+            && column_group_id == item_array_[i].column_group_id_
+            && disk_no == item_array_[i].disk_no_)
         {
           aio_buf_mgr = item_array_[i].aio_buf_mgr_;
           if (NULL == aio_buf_mgr)
@@ -2205,11 +2270,9 @@ namespace oceanbase
              */
             TBSYS_LOG(WARN, "aio buffer manager is NULL in thread aio buffer "
                             "manager array, item_count=%ld, index=%ld, "
-                            "table_id=%lu, column_group_id=%lu",
-                      item_count_, i, table_id, column_group_id);
-            item_array_[i].sstable_id_ = OB_INVALID_ID;
-            item_array_[i].table_id_ = OB_INVALID_ID;
-            item_array_[i].column_group_id_ = OB_INVALID_ID;
+                            "table_id=%lu, column_group_id=%lu, disk_no=%ld",
+                      item_count_, i, table_id, column_group_id, disk_no);
+            item_array_[i].reset();
             if (i < item_count_ -1)
             {
               memmove(&item_array_[i], &item_array_[i + 1], 
@@ -2230,12 +2293,55 @@ namespace oceanbase
         for (i = 0; i < item_count_; ++i)
         {
           if (NULL != item_array_[i].aio_buf_mgr_ 
+              && disk_no == item_array_[i].disk_no_
+              && item_array_[i].aio_buf_mgr_->is_wait_timeout()
+              && FREE_FREE != item_array_[i].aio_buf_mgr_->get_state())
+          {
+            //recheck again
+            int64_t timeout = 0;
+            if (OB_SUCCESS != (err = item_array_[i].aio_buf_mgr_->wait_aio_buf_free(timeout))
+                || FREE_FREE != item_array_[i].aio_buf_mgr_->get_state())
+            {
+              //all threads print warning log each 5s
+              if (REACH_TIME_INTERVAL_RANGE(5L * 1000000L, 60L * 1000000L))
+              {
+                TBSYS_LOG(WARN, "aio buffers of the disk are busy, disk_no=%ld, "
+                    "state=%s, sstable_id=%lu, table_id=%lu, err=%d",
+                    disk_no, item_array_[i].aio_buf_mgr_->print_state(), 
+                    item_array_[i].sstable_id_, item_array_[i].table_id_, err);
+              }
+              if (tbsys::CTimeUtil::getTime() - item_array_[i].timeout_time_ 
+                  > DISK_WARN_AIO_TIMEOUT_US)
+              {
+                //direct unload the disk
+                OB_SET_DISK_ERROR(static_cast<int32_t>(disk_no));
+
+                //each thread prints error log each 5s 
+                if (TC_REACH_TIME_INTERVAL(5L * 1000000L))
+                {
+                  TBSYS_LOG(ERROR, "WARNING: maybe disk %ld is broken, wait %ldus "
+                      "and it doesn't return",
+                      item_array_[i].disk_no_, 
+                      tbsys::CTimeUtil::getTime() - item_array_[i].timeout_time_);
+                }
+              }
+              err = OB_IO_ERROR;
+            }
+            break;
+          }
+        }
+
+        for (i = 0; i < item_count_ && OB_SUCCESS == err; ++i)
+        {
+          if (NULL != item_array_[i].aio_buf_mgr_ 
               && FREE_FREE == item_array_[i].aio_buf_mgr_->get_state())
           {
             aio_buf_mgr = item_array_[i].aio_buf_mgr_;
             item_array_[i].sstable_id_ = sstable_id;
             item_array_[i].table_id_ = table_id;
             item_array_[i].column_group_id_ = column_group_id;
+            item_array_[i].disk_no_ = disk_no;
+            item_array_[i].timeout_time_ = 0;
             break;
           }
           else if (NULL == item_array_[i].aio_buf_mgr_)
@@ -2247,11 +2353,9 @@ namespace oceanbase
              */
             TBSYS_LOG(WARN, "aio buffer manager is NULL in thread aio buffer "
                             "manager array, item_count=%ld, index=%ld, "
-                            "table_id=%lu, column_group_id=%lu",
-                      item_count_, i, table_id, column_group_id);
-            item_array_[i].sstable_id_ = OB_INVALID_ID;
-            item_array_[i].table_id_ = OB_INVALID_ID;
-            item_array_[i].column_group_id_ = OB_INVALID_ID;
+                            "table_id=%lu, column_group_id=%lu, disk_no=%ld",
+                      item_count_, i, table_id, column_group_id, disk_no);
+            item_array_[i].reset();
             if (i < item_count_ -1)
             {
               memmove(&item_array_[i], &item_array_[i + 1], 
@@ -2262,8 +2366,8 @@ namespace oceanbase
         }
       }
 
-      //create a new  aio buffer manager if necessary
-      if (NULL == aio_buf_mgr)
+      //create a new aio buffer manager if necessary
+      if (free_mgr && NULL == aio_buf_mgr && OB_SUCCESS == err)
       {
         if (item_count_ < MAX_THREAD_AIO_BUFFER_MGR)
         {
@@ -2273,6 +2377,8 @@ namespace oceanbase
             item_array_[item_count_].sstable_id_ = sstable_id;
             item_array_[item_count_].table_id_ = table_id;
             item_array_[item_count_].column_group_id_ = column_group_id;
+            item_array_[item_count_].disk_no_ = disk_no;
+            item_array_[item_count_].timeout_time_ = 0;
             item_array_[item_count_].aio_buf_mgr_ = aio_buf_mgr;
             ++item_count_;
           }
@@ -2284,6 +2390,11 @@ namespace oceanbase
                     OB_MAX_COLUMN_GROUP_NUMBER, item_count_);
           aio_buf_mgr = NULL;
         }
+      }
+      
+      if (free_mgr && NULL != aio_buf_mgr && OB_SUCCESS == err)
+      {
+        thread_aio_stat_ += aio_buf_mgr->get_aio_stat();
       }
 
       return aio_buf_mgr;
@@ -2297,10 +2408,25 @@ namespace oceanbase
       for (int64_t i = 0; 
            i < item_count_ && OB_SUCCESS == ret && cur_timeout_us > 0; ++i)
       {
-        ret = item_array_[i].aio_buf_mgr_->wait_aio_buf_free(cur_timeout_us);
-        if (OB_SUCCESS == ret)
+        //ignore aio buffer which waited timeout before 
+        if (0 == item_array_[i].timeout_time_)
         {
-          item_array_[i].sstable_id_ = OB_INVALID_ID;
+          if (item_array_[i].aio_buf_mgr_->is_wait_timeout())
+          {
+            item_array_[i].timeout_time_ = tbsys::CTimeUtil::getTime();
+          }
+          else
+          {
+            ret = item_array_[i].aio_buf_mgr_->wait_aio_buf_free(cur_timeout_us);
+            if (OB_SUCCESS == ret)
+            {
+              item_array_[i].reset();
+            }
+            else if (OB_AIO_TIMEOUT == ret)
+            {
+              item_array_[i].timeout_time_ = tbsys::CTimeUtil::getTime();
+            }
+          }
         }
       }
 
@@ -2309,6 +2435,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "wait all thread aio buffer manager free time out");
         ret = OB_AIO_TIMEOUT;
       }
+      thread_aio_stat_.reset();
 
       return ret;
     }
@@ -2323,6 +2450,77 @@ namespace oceanbase
       }
 
       return bret;
+    }
+
+    void ObThreadAIOBufferMgrArray::add_stat(const ObIOStat& stat)
+    {
+      thread_aio_stat_ += stat;
+    }
+
+    const char* ObThreadAIOBufferMgrArray::get_thread_aio_stat_str()
+    {
+      static __thread char buffer[512];
+      ObIOStat stat = thread_aio_stat_;
+
+      for (int64_t i = 0; i < item_count_; ++i)
+      {
+        stat += item_array_[i].aio_buf_mgr_->get_aio_stat();
+      }
+
+      snprintf(buffer, 512, "read_size=%ld, read_times=%ld, "
+                      "read_blocks=%ld, total_blocks=%ld, "
+                      "total_size=%ld, cached_size=%ld, sstable_id=%lu",
+        stat.total_read_size_, stat.total_read_times_, stat.total_read_blocks_,
+        stat.total_blocks_, stat.total_size_, stat.total_cached_size_,
+        stat.sstable_id_);
+
+      return buffer;
+    }
+
+    int wait_aio_buffer()
+    {
+      int ret = OB_SUCCESS;
+      int status = 0;
+
+      ObThreadAIOBufferMgrArray* aio_buf_mgr_array = 
+        GET_TSI_MULT(ObThreadAIOBufferMgrArray, TSI_SSTABLE_THREAD_AIO_BUFFER_MGR_ARRAY_1);
+      if (NULL == aio_buf_mgr_array)
+      {
+        ret = OB_ERROR;
+      }
+      else if (OB_AIO_TIMEOUT == (status = 
+            aio_buf_mgr_array->wait_all_aio_buf_mgr_free(OB_AIO_TIMEOUT_US)))
+      {    
+        TBSYS_LOG(WARN, "failed to wait all aio buffer manager free, "
+                        "stop current thread");
+        ret = OB_ERROR;
+      }    
+
+      return ret;
+    }
+
+    const char* get_io_stat_str()
+    {
+      const char* stat_str = "";
+
+      ObThreadAIOBufferMgrArray* aio_buf_mgr_array = 
+        GET_TSI_MULT(ObThreadAIOBufferMgrArray, TSI_SSTABLE_THREAD_AIO_BUFFER_MGR_ARRAY_1);
+      if (NULL != aio_buf_mgr_array)
+      {
+        stat_str = aio_buf_mgr_array->get_thread_aio_stat_str();
+      }
+  
+      return stat_str;
+    }
+
+    void add_io_stat(const ObIOStat& stat)
+    {
+      ObThreadAIOBufferMgrArray* aio_buf_mgr_array = 
+        GET_TSI_MULT(ObThreadAIOBufferMgrArray, TSI_SSTABLE_THREAD_AIO_BUFFER_MGR_ARRAY_1);
+      if (NULL != aio_buf_mgr_array)
+      {
+        aio_buf_mgr_array->add_stat(stat);
+      }
     }
   } // end namespace sstable 
 } // end namespace oceanbase

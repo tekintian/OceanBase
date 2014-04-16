@@ -1,16 +1,14 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ./none_compressor.cpp for ...
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation. 
+ *  
+ * none_compressor.cpp for compressor without compress. 
  *
  * Authors:
- *   qushan <qushan@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #include <new>
@@ -74,4 +72,3 @@ void destroy(ObCompressor *none)
     none = NULL;
   }
 }
-

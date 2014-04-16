@@ -1,16 +1,15 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
  * version 2 as published by the Free Software Foundation. 
- *  
- * Version: 5567
  *
- * ob_sstable_block_index_builder.h
+ * ob_sstable_block_index_builder.h for persistent ssatable 
+ * index and store index. 
  *
  * Authors:
- *     huating <huating.zmq@taobao.com>
+ *   huating <huating.zmq@taobao.com>
  *
  */
 #ifndef OCEANBASE_SSTABLE_OB_BLOCK_INDEX_BUILDER_H_
@@ -20,6 +19,7 @@
 #include "common/ob_string.h"
 #include "common/ob_malloc.h"
 #include "common/ob_list.h"
+#include "common/ob_rowkey.h"
 #include "ob_sstable_block_index_buffer.h"
 
 namespace oceanbase 
@@ -30,7 +30,8 @@ namespace oceanbase
     {
       int64_t sstable_block_count_;         //block count of sstable
       int32_t end_key_char_stream_offset_;  //offset of end keys array
-      int32_t reserved32_;                  //reserved, must be 0
+      int16_t rowkey_flag_;                 // v2.1 rowkey obj array format, set to 1
+      int16_t reserved16_;                  // reserved, must be 0
       int64_t reserved64_[2];               //reserved, must be 0
 
       NEED_SERIALIZE_AND_DESERIALIZE;
@@ -115,9 +116,11 @@ namespace oceanbase
        * @return int if success,return OB_SUCCESS, else return 
        *         OB_ERROR
        */
-      int add_entry(const uint64_t table_id, const uint64_t column_group_id, const common::ObString &key, 
+      int add_entry(const uint64_t table_id, const uint64_t column_group_id, const common::ObRowkey &key, 
                     const int32_t record_size);
 
+      int add_entry(const uint64_t table_id, const uint64_t column_group_id, const common::ObString &key, 
+                    const int32_t record_size);
       /**
        * before user write the block index into sstable, call this 
        * function to serialize and merge block index header, index 
@@ -136,7 +139,7 @@ namespace oceanbase
        * @return int if success,return OB_SUCCESS, else return 
        *         OB_ERROR
        */
-      int build_block_index(char* index_block, const int64_t buffer_size, int64_t& index_size);
+      int build_block_index(const bool use_binary_rowkey, char* index_block, const int64_t buffer_size, int64_t& index_size);
 
     private:
       DISALLOW_COPY_AND_ASSIGN(ObSSTableBlockIndexBuilder);

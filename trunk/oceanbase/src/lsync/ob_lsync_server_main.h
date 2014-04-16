@@ -25,38 +25,39 @@ namespace oceanbase
 {
   namespace lsync
   {
+    const static int SIG_INC_LOG_LEVEL = SIGUSR1;
+    const static int SIG_DEC_LOG_LEVEL = SIGUSR2;
     class ObLsyncServerMain : public common::BaseMain
     {
-    protected:
-      ObLsyncServerMain(){}
-      ~ObLsyncServerMain(){}
+      protected:
+        ObLsyncServerMain() : common::BaseMain(), app_name_(NULL) {}
+        ~ObLsyncServerMain(){}
 
-    protected:
-      virtual int do_work();
-      virtual void do_signal(const int sig);
-      virtual const char* parse_cmd_line(const int argc,  char *const argv[]);
-      virtual void print_usage(const char *prog_name);
-      virtual void print_version();
+      protected:
+        virtual int do_work();
+        virtual void do_signal(const int sig);
+        virtual void parse_cmd_line(const int argc,  char *const argv[]);
+        virtual void print_usage(const char *prog_name);
+        virtual void print_version();
 
-    public:
-      static ObLsyncServerMain* get_instance();
-    public:
-      const ObLsyncServer& get_lsync_server() const
-      {
-        return server_;
-      }
+      public:
+        static ObLsyncServerMain* get_instance();
+      public:
+        const ObLsyncServer& get_lsync_server() const
+        {
+          return server_;
+        }
 
-      ObLsyncServer& get_lsync_server()
-      {
-        return server_;
-      }
+        ObLsyncServer& get_lsync_server()
+        {
+          return server_;
+        }
 
-    private:
-      const char* app_name_;
-      int log_level_;
-      ObLsyncServerParam cmd_line_param_;
-      ObLsyncServerParam param_;
-      ObLsyncServer server_;
+      private:
+        const char* app_name_;
+        ObLsyncServerParam cmd_line_param_;
+        ObLsyncServerParam param_;
+        ObLsyncServer server_;
     };
   }
 }

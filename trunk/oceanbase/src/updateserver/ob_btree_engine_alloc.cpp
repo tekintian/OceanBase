@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_btree_engine_alloc.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +7,7 @@ namespace oceanbase
 {
   namespace updateserver
   {
-    const int32_t UpsBtreeEngineAlloc::MALLOC_SIZE = (1024 * 1024);
+    const int32_t UpsBtreeEngineAlloc::MALLOC_SIZE = (2 * 1024 * 1024);
 
     /**
      * 构造函数
@@ -101,11 +86,11 @@ namespace oceanbase
         // malloc出一个新块, 每次1m
         // 分配出1m空间
         int32_t n = UpsBtreeEngineAlloc::MALLOC_SIZE / size_;
-        n = (n < 1 ? 1 : n) * size_ + sizeof(struct MemBuffer);
+        n = static_cast<int32_t>((n < 1 ? 1 : n) * size_ + sizeof(struct MemBuffer));
         char *pdata = NULL;
         if (NULL != mem_tank_)
         {
-          pdata = reinterpret_cast<char*>(mem_tank_->engine_alloc(n));
+          pdata = reinterpret_cast<char*>(mem_tank_->btree_engine_alloc(n));
         }
         if (NULL != pdata)
         {
@@ -187,6 +172,4 @@ namespace oceanbase
 
   } // end namespace updateserver
 } // end namespace oceanbase
-
-
 

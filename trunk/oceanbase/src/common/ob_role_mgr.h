@@ -1,22 +1,22 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  * Version: $Id$
- *
- * ob_role_mgr.h for ...
  *
  * Authors:
  *   yanran <yanran.hfs@taobao.com>
- *
+ *     - some work details if you want
  */
+
 #ifndef OCEANBASE_COMMON_OB_ROLE_MGR_H_
 #define OCEANBASE_COMMON_OB_ROLE_MGR_H_
 
 #include "ob_atomic.h"
+#include <tbsys.h>
 
 namespace oceanbase
 {
@@ -45,10 +45,11 @@ namespace oceanbase
       {
         ERROR = 1,
         INIT = 2,
-        ACTIVE = 3,
-        SWITCHING = 4,
-        STOP = 5,
-        HOLD = 6,
+        NOTSYNC = 3,
+        ACTIVE = 4,
+        SWITCHING = 5,
+        STOP = 6,
+        HOLD = 7,
       };
 
     public:
@@ -64,10 +65,11 @@ namespace oceanbase
       inline Role get_role() const {return role_;}
 
       /// @brief 修改Role
-      inline void set_role(const Role role) 
+      inline void set_role(const Role role)
       {
+        TBSYS_LOG(INFO, "before set_role=%s state=%s", get_role_str(), get_state_str());
         atomic_exchange(reinterpret_cast<uint32_t*>(&role_), role);
-        TBSYS_LOG(INFO, "set_role=%d state=%d", role_, state_);
+        TBSYS_LOG(INFO, "after set_role=%s state=%s", get_role_str(), get_state_str());
       }
 
       /// 获取State
@@ -76,8 +78,9 @@ namespace oceanbase
       /// 修改State
       inline void set_state(const State state)
       {
+        TBSYS_LOG(INFO, "before set_state=%s role=%s", get_state_str(), get_role_str());
         atomic_exchange(reinterpret_cast<uint32_t*>(&state_), state);
-        TBSYS_LOG(INFO, "set_state=%d role=%d", state_, role_);
+        TBSYS_LOG(INFO, "after set_state=%s role=%s", get_state_str(), get_role_str());
       }
 
       inline const char* get_role_str() const
@@ -105,6 +108,10 @@ namespace oceanbase
         }
       }
 
+      inline bool is_master() const
+      {
+        return (role_ == ObRoleMgr::MASTER) && (state_ == ObRoleMgr::ACTIVE);
+      }
     private:
       Role role_;
       State state_;
@@ -113,4 +120,3 @@ namespace oceanbase
 } // end namespace oceanbase
 
 #endif // OCEANBASE_COMMON_OB_ROLE_MGR_H_
-

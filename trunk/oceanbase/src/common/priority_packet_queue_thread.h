@@ -1,24 +1,27 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * priority_packet_queue_thread.h for ...
+ *
+ *
+ * Version: 0.1: priority_packet_queue_thread.h,v 0.1 2011/03/16 10:00:00 chuanhui Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - modify PacketQueueThread to support multiple task queues with different priority
  *
  */
+
 #ifndef OCEANBASE_COMMON_PRIORITY_PACKET_QUEUE_THREAD_H
 #define OCEANBASE_COMMON_PRIORITY_PACKET_QUEUE_THREAD_H
 
-#include "tbnet.h"
 #include "ob_packet.h"
 #include "ob_packet_queue.h"
+#include "ob_packet_queue_handler.h"
+#include "ob_trace_id.h"
 
 namespace oceanbase {
 namespace common {
@@ -27,6 +30,7 @@ class PriorityPacketQueueThread : public tbsys::CDefaultRunnable
 {
 public:
   enum QueuePriority {
+    HIGH_PRIV = -1,
     NORMAL_PRIV = 0,
     LOW_PRIV = 1,
   };
@@ -36,13 +40,13 @@ public:
   PriorityPacketQueueThread();
 
   // 构造
-  PriorityPacketQueueThread(int threadCount, tbnet::IPacketQueueHandler *handler, void *args);
+  PriorityPacketQueueThread(int threadCount, ObPacketQueueHandler *handler, void *args);
 
   // 析构
   ~PriorityPacketQueueThread();
 
   // 参数设置
-  void setThreadParameter(int threadCount, tbnet::IPacketQueueHandler *handler, void *args);
+  void setThreadParameter(int threadCount, ObPacketQueueHandler *handler, void *args);
 
   // stop
   void stop(bool waitFinish = false);
@@ -53,12 +57,12 @@ public:
   // Runnable 接口
   void run(tbsys::CThread *thread, void *arg);
 
-  tbnet::Packet* head(int priority)
+  ObPacket* head(int priority)
   {
     return _queues[priority].head();
   }
 
-  tbnet::Packet* tail(int priority)
+  ObPacket* tail(int priority)
   {
     return _queues[priority].tail();
   }
@@ -77,13 +81,13 @@ public:
   {
     return _percent[LOW_PRIV];
   }
-
+  void set_ip_port(const IpPort & ip_port);
   void set_low_priv_cur_percent(const int64_t low_priv_percent)
   {
     if (low_priv_percent <= LOW_PRIV_MAX_PERCENT && low_priv_percent >= LOW_PRIV_MIN_PERCENT)
     {
-      _percent[LOW_PRIV] = low_priv_percent;
-      _percent[NORMAL_PRIV] = 100 - low_priv_percent;
+      _percent[LOW_PRIV] = static_cast<int32_t>(low_priv_percent);
+      _percent[NORMAL_PRIV] = static_cast<int32_t>(100 - low_priv_percent);
       _sum = 100;
     }
     else
@@ -112,7 +116,7 @@ private:
 
 private:
   ObPacketQueue _queues[QUEUE_NUM];
-  tbnet::IPacketQueueHandler *_handler;
+  ObPacketQueueHandler *_handler;
   tbsys::CThreadCond _cond[QUEUE_NUM];
   tbsys::CThreadCond _pushcond[QUEUE_NUM];
   void *_args;
@@ -121,11 +125,11 @@ private:
   bool _waiting[QUEUE_NUM];
   int32_t _percent[QUEUE_NUM];
   int32_t _sum;
+  IpPort ip_port_;
 };
 
 }
 }
 
 #endif
-
 

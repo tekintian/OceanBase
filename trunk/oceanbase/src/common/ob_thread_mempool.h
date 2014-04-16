@@ -1,18 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * ob_thread_mempool.h for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
+////===================================================================
+ //
+ // ob_thread_mempool.h / common / Oceanbase
+ //
+ // Copyright (C) 2010 Taobao.com, Inc.
+ //
+ // Created on 2011-01-13 by Yubai (yubai.lk@taobao.com) 
+ //
+ // -------------------------------------------------------------------
+ //
+ // Description
+ //
+ //
+ // -------------------------------------------------------------------
+ // 
+ // Change Log
+ //
+////====================================================================
+
 #ifndef  OCEANBASE_COMMON_THREAD_MEMPOOL_H_
 #define  OCEANBASE_COMMON_THREAD_MEMPOOL_H_
 #include <stdlib.h>
@@ -30,7 +34,7 @@ namespace oceanbase
   {
     struct DefaultAllocator
     {
-      void *malloc(const int32_t nbyte) { return ob_malloc(nbyte); };
+      void *malloc(const int32_t nbyte) { return ob_malloc(nbyte, ObModIds::OB_THREAD_MEM_POOL); };
       void free(void *ptr) { ob_free(ptr); };
     };
     class ObMemList
@@ -89,5 +93,4 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_THREAD_MEMPOOL_H_
-
 
