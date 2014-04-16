@@ -62,7 +62,7 @@ TEST_F(TestObStringBuf, lifecycle)
   for (int64_t i = 0; i < NUM; ++i)
   {
     sprintf(str_buf[i], "row_key_%ld", i);
-    str[i].assign(str_buf[i], strlen(str_buf[i]));
+    str[i].assign(str_buf[i], static_cast<int32_t>(strlen(str_buf[i])));
     memcpy(compare_buf[i], str_buf[i], strlen(str_buf[i]) + 1);
   }
   // add string to string buf
@@ -71,7 +71,7 @@ TEST_F(TestObStringBuf, lifecycle)
     err = string_buf.write_string(str[i], &stored_str[i]);
     EXPECT_EQ(0, err);
   }
-  
+
   // clear ori str buf
   memset(str_buf, 0x00, sizeof(str_buf));
 
@@ -100,7 +100,7 @@ TEST_F(TestObStringBuf, test_write_str_obj)
   for (int64_t i = 0; i < NUM; ++i)
   {
     sprintf(str_buf[i], "row_key_%ld", i);
-    str[i].assign(str_buf[i], strlen(str_buf[i]));
+    str[i].assign(str_buf[i], static_cast<int32_t>(strlen(str_buf[i])));
     memcpy(compare_buf[i], str_buf[i], strlen(str_buf[i]) + 1);
     obj[i].set_varchar(str[i]);
   }
@@ -111,7 +111,7 @@ TEST_F(TestObStringBuf, test_write_str_obj)
     err = string_buf.write_obj(obj[i], &stored_obj[i]);
     EXPECT_EQ(0, err);
   }
-  
+
   // clear ori str buf
   memset(str_buf, 0x00, sizeof(str_buf));
 
@@ -148,7 +148,7 @@ TEST_F(TestObStringBuf, test_write_int_obj)
     err = string_buf.write_obj(obj[i], &stored_obj[i]);
     EXPECT_EQ(0, err);
   }
-  
+
   // check result
   int64_t val = 0;
   for (int64_t i = 0; i < NUM; ++i)
@@ -156,70 +156,6 @@ TEST_F(TestObStringBuf, test_write_int_obj)
     err = stored_obj[i].get_int(val);
     EXPECT_EQ(0, err);
     EXPECT_EQ(i + 1000, val);
-  }
-}
-
-static const double EPS = 1e-7;
-
-TEST_F(TestObStringBuf, test_write_double_obj)
-{
-  int err = OB_SUCCESS;
-  ObStringBuf string_buf;
-  const int64_t NUM = 10;
-  ObObj obj[NUM];
-  ObObj stored_obj[NUM];
-
-  // init ObString obj
-  for (int64_t i = 0; i < NUM; ++i)
-  {
-    obj[i].set_double(i + 10.0);
-  }
-
-  // add string to string buf
-  for (int64_t i = 0; i < NUM; ++i)
-  {
-    err = string_buf.write_obj(obj[i], &stored_obj[i]);
-    EXPECT_EQ(0, err);
-  }
-  
-  // check result
-  double val = 0.0;
-  for (int64_t i = 0; i < NUM; ++i)
-  {
-    err = stored_obj[i].get_double(val);
-    EXPECT_EQ(0, err);
-    EXPECT_TRUE(val + EPS > i + 10.0);
-  }
-}
-
-TEST_F(TestObStringBuf, test_write_float_obj)
-{
-  int err = OB_SUCCESS;
-  ObStringBuf string_buf;
-  const int64_t NUM = 10;
-  ObObj obj[NUM];
-  ObObj stored_obj[NUM];
-
-  // init ObString obj
-  for (int64_t i = 0; i < NUM; ++i)
-  {
-    obj[i].set_float(i + 10.0);
-  }
-
-  // add string to string buf
-  for (int64_t i = 0; i < NUM; ++i)
-  {
-    err = string_buf.write_obj(obj[i], &stored_obj[i]);
-    EXPECT_EQ(0, err);
-  }
-  
-  // check result
-  float val = 0.0;
-  for (int64_t i = 0; i < NUM; ++i)
-  {
-    err = stored_obj[i].get_float(val);
-    EXPECT_EQ(0, err);
-    EXPECT_TRUE(val + EPS > i + 10.0);
   }
 }
 
@@ -243,7 +179,7 @@ TEST_F(TestObStringBuf, test_write_time_second_obj)
     err = string_buf.write_obj(obj[i], &stored_obj[i]);
     EXPECT_EQ(0, err);
   }
-  
+
   // check result
   ObDateTime val = 0;
   for (int64_t i = 0; i < NUM; ++i)
@@ -253,6 +189,7 @@ TEST_F(TestObStringBuf, test_write_time_second_obj)
     EXPECT_EQ(i + 1000, val);
   }
 }
+
 
 TEST_F(TestObStringBuf, test_write_time_microsecond_obj)
 {
@@ -274,7 +211,7 @@ TEST_F(TestObStringBuf, test_write_time_microsecond_obj)
     err = string_buf.write_obj(obj[i], &stored_obj[i]);
     EXPECT_EQ(0, err);
   }
-  
+
   // check result
   ObPreciseDateTime val = 0;
   for (int64_t i = 0; i < NUM; ++i)
@@ -284,6 +221,131 @@ TEST_F(TestObStringBuf, test_write_time_microsecond_obj)
     EXPECT_EQ(i + 1000, val);
   }
 }
+
+TEST_F(TestObStringBuf, test_set_string_buf_size)
+{
+  int err = OB_SUCCESS;
+  ObStringBuf string_buf(0, 1211);
+  const int64_t NUM = 1;
+  ObObj obj[NUM];
+  ObObj stored_obj[NUM];
+  const int64_t cstr_len = 500;
+  char cstr[cstr_len];
+  ObString str;
+
+  strcpy(cstr, "hello world");
+  // init ObString obj
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    str.assign(cstr, cstr_len);
+    obj[i].set_varchar(str);
+  }
+
+  // add string to string buf
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    err = string_buf.write_obj(obj[i], &stored_obj[i]);
+    EXPECT_EQ(OB_SUCCESS, err);
+  }
+
+  // check result
+  ObString val;
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    err = stored_obj[i].get_varchar(val);
+    EXPECT_EQ(OB_SUCCESS, err);
+    EXPECT_EQ(val, str);
+  }
+  ASSERT_EQ(64 * 1024L  , string_buf.total());
+}
+
+
+
+
+TEST_F(TestObStringBuf, test_set_string_buf_size_overflow)
+{
+  int err = OB_SUCCESS;
+  ObStringBuf string_buf(0, 200);
+  const int64_t NUM = 1;
+  ObObj obj[NUM];
+  ObObj stored_obj[NUM];
+  const int64_t cstr_len = 64 * 1024 + 100;
+  char *cstr = (char*)ob_malloc(cstr_len, ObModIds::TEST);
+  ObString str;
+
+  ASSERT_TRUE(NULL != cstr);
+  strcpy(cstr, "hello world");
+  // init ObString obj
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    str.assign(cstr, cstr_len);
+    obj[i].set_varchar(str);
+  }
+
+  // add string to string buf
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    err = string_buf.write_obj(obj[i], &stored_obj[i]);
+    EXPECT_EQ(OB_SUCCESS, err);
+  }
+
+  // check result
+  ObString val;
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    err = stored_obj[i].get_varchar(val);
+    EXPECT_EQ(OB_SUCCESS, err);
+    EXPECT_EQ(val, str);
+  }
+  // 128KB
+  EXPECT_EQ(24+cstr_len+64 * 1024L, string_buf.total());
+  ob_free(cstr);
+}
+
+
+TEST_F(TestObStringBuf, test_set_string_buf_size_use_user_define)
+{
+  int err = OB_SUCCESS;
+  ObStringBuf string_buf(0, 100 * 1024);
+  const int64_t NUM = 1;
+  ObObj obj[NUM];
+  ObObj stored_obj[NUM];
+  const int64_t cstr_len = 64 * 1024 + 100;
+  char *cstr = (char*)ob_malloc(cstr_len, ObModIds::TEST);
+  ObString str;
+
+  ASSERT_TRUE(NULL != cstr);
+  strcpy(cstr, "hello world");
+  // init ObString obj
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    str.assign(cstr, cstr_len);
+    obj[i].set_varchar(str);
+  }
+
+  // add string to string buf
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    err = string_buf.write_obj(obj[i], &stored_obj[i]);
+    EXPECT_EQ(OB_SUCCESS, err);
+  }
+
+  // check result
+  ObString val;
+  for (int64_t i = 0; i < NUM; ++i)
+  {
+    err = stored_obj[i].get_varchar(val);
+    EXPECT_EQ(OB_SUCCESS, err);
+    EXPECT_EQ(val, str);
+  }
+  EXPECT_EQ(100 * 1024L, string_buf.total());
+  ob_free(cstr);
+}
+
+
+
+
+
 
 
 
@@ -298,6 +360,3 @@ int main(int argc, char** argv)
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-
-

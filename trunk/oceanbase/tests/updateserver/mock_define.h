@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * mock_define.h for ...
- *
- * Authors:
- *   rongxuan <rongxuan.lc@taobao.com>
- *
- */
 #ifndef MERGESERVER_MOCK_DEFINE_H_ 
 #define MERGESERVER_MOCK_DEFINE_H_
 #include "common/ob_define.h"
@@ -78,5 +63,3 @@ namespace mock
   }
 }
 #endif /* MERGESERVER_MOCK_DEFINE_H_ */
-
-

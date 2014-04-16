@@ -1,21 +1,22 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ *  (C) 2007-2010 Taobao Inc.
+ *  
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License version 2 as
+ *  published by the Free Software Foundation.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ *         ob_disk_path.cpp is for what ...
  *
- * test_disk_path.cpp for ...
+ *  Version: $Id: ob_disk_path.cpp 2011年03月22日 09时54分22秒 qushan Exp $
  *
- * Authors:
- *   rizhao <rizhao.ych@taobao.com>
- *
+ *  Authors:
+ *     qushan < qushan@taobao.com >
+ *        - some work details if you want
  */
+
 #include "common/ob_define.h"
+#include "common/ob_common_stat.h"
 #include "sstable/ob_disk_path.h"
-#include "sstable/ob_sstable_stat.h"
 
 using namespace oceanbase::common;
 
@@ -23,11 +24,6 @@ namespace oceanbase
 {
   namespace sstable
   {
-    uint64_t get_sstable_disk_no(const uint64_t sstable_file_id)
-    {
-      return (sstable_file_id & DISK_NO_MASK);
-    }
-
     int get_sstable_directory(const int32_t disk_no, char *path, const int64_t path_len)
     {
       int ret = OB_SUCCESS;
@@ -62,6 +58,7 @@ namespace oceanbase
     int get_meta_path(const int32_t disk_no, const bool current, char *path, const int32_t path_len)
     {
       int ret = OB_SUCCESS;
+      UNUSED(current);
       if (disk_no <= 0 || NULL == path ||  path_len <= 0)
       {
         ret = OB_INVALID_ARGUMENT;
@@ -77,6 +74,7 @@ namespace oceanbase
         const bool current, char *path, const int32_t path_len)
     {
       int ret = OB_SUCCESS;
+      UNUSED(current);
       if (disk_no <= 0 || NULL == path ||  path_len <= 0)
       {
         ret = OB_INVALID_ARGUMENT;
@@ -106,9 +104,13 @@ namespace oceanbase
         break;
       case INDEX_BLOCK_CACHE_MISS:
         break;
-      case INDEX_DISK_IO_NUM:
+      case INDEX_DISK_IO_READ_NUM:
         break;
-      case INDEX_DISK_IO_BYTES:
+      case INDEX_DISK_IO_WRITE_NUM:
+        break;
+      case INDEX_DISK_IO_READ_BYTES:
+        break;
+      case INDEX_DISK_IO_WRITE_BYTES:
         break;
       default:
         break;
@@ -132,9 +134,13 @@ namespace oceanbase
         break;
       case INDEX_BLOCK_CACHE_MISS:
         break;
-      case INDEX_DISK_IO_NUM:
+      case INDEX_DISK_IO_READ_NUM:
         break;
-      case INDEX_DISK_IO_BYTES:
+      case INDEX_DISK_IO_WRITE_NUM:
+        break;
+      case INDEX_DISK_IO_READ_BYTES:
+        break;
+      case INDEX_DISK_IO_WRITE_BYTES:
         break;
       default:
         break;
@@ -143,5 +149,3 @@ namespace oceanbase
 #endif
   }
 }
-
-

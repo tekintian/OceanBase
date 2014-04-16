@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * test_storemgr.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
 #include "updateserver/ob_store_mgr.h"
 
 using namespace oceanbase;
@@ -64,6 +49,4 @@ int main(int argc, char **argv)
     fprintf(stderr, "store %s %lu\n", sm.get_dir(*list_iter), *list_iter);
   }
 }
-
-
 

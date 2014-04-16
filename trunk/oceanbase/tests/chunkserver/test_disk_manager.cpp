@@ -1,10 +1,39 @@
 #include <gtest/gtest.h>
 #include "ob_define.h"
 #include "chunkserver/ob_disk_manager.h"
+#include "common/ob_disk_checker.h"
 #include "common/ob_malloc.h"
 
 using namespace oceanbase;
 using namespace oceanbase::chunkserver;
+using namespace oceanbase::common;
+
+TEST(ObDiskManager, direct_set_error)
+{
+  ObDiskManager disk_m;
+  disk_m.scan("/data",256*1024*1024);
+  int32_t disk_no_1 = 1;
+  int32_t bad_disk = 0;
+
+  ObDiskCheckerSingleton::get_instance().set_check_stat(disk_no_1, common::CHECK_ERROR);
+  ASSERT_EQ(common::OB_IO_ERROR, disk_m.check_disk(bad_disk));
+  ASSERT_EQ(disk_no_1, bad_disk);
+
+
+  int32_t disk_no_2 = 2; 
+  ObDiskCheckerSingleton::get_instance().set_check_stat(disk_no_2, common::CHECK_ERROR);
+  ASSERT_EQ(common::OB_IO_ERROR, disk_m.check_disk(bad_disk));
+  ASSERT_EQ(disk_no_1, bad_disk);
+
+  ObDiskCheckerSingleton::get_instance().set_check_stat(disk_no_1, common::CHECK_NORMAL);
+  ASSERT_EQ(common::OB_SUCCESS, disk_m.check_disk(bad_disk));
+
+
+  ObDiskCheckerSingleton::get_instance().set_check_stat(disk_no_2, common::CHECK_ERROR);
+  ASSERT_EQ(common::OB_IO_ERROR, disk_m.check_disk(bad_disk));
+  ASSERT_EQ(disk_no_2, bad_disk);
+}
+
 
 TEST(obDiskManager,test)
 {

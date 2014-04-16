@@ -1,19 +1,18 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * test_tablet_info_manager.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
+/*
+ *   (C) 2007-2010 Taobao Inc.
+ *   
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License version 2 as
+ *   published by the Free Software Foundation.
+ *       
+ *         
+ *         
+ *   Version: $Id: ipvsadm.c,v 1.27 2005/12/10 16:00:07 wensong Exp $
+ *           
+ *   Authors:
+ *      daoan <daoan@taobao.com>
+ *               
  */
-
 
 #include <gtest/gtest.h>
 #include <unistd.h>
@@ -21,27 +20,25 @@
 #include "common/ob_vector.h"
 #include "rootserver/ob_tablet_info_manager.h"
 #include "rootserver/ob_root_meta2.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
+static CharArena allocator_;
 namespace 
 {
-  void build_range(ObRange & r, int64_t tid, int8_t flag, const char* sk, const char* ek)
+  void build_range(ObNewRange & r, int64_t tid, int8_t flag, const char* sk, const char* ek)
   {
-
-    ObString start_key(strlen(sk), strlen(sk), (char*)sk);
-    ObString end_key(strlen(ek), strlen(ek), (char*)ek);
-
     r.table_id_ = tid;
     r.border_flag_.set_data(flag);
-    r.start_key_ = start_key;
-    r.end_key_ = end_key;
+    r.start_key_ = make_rowkey(sk, &allocator_);
+    r.end_key_ = make_rowkey(ek, &allocator_);
 
   }
 }
 
 TEST(TabletInfoManagerTest, test)
 {
-  ObRange r1, r2, r3, r4;
+  ObNewRange r1, r2, r3, r4;
   const char* key1 = "foo1";
   const char* key2 = "key2";
   const char* key3 = "too3";
@@ -84,7 +81,7 @@ TEST(TabletInfoManagerTest, test)
 }
 TEST(TabletInfoManagerTest, compare)
 {
-  ObRange r1, r2, r3, r4;
+  ObNewRange r1, r2, r3, r4;
   const char* key1 = "foo1";
   const char* key2 = "key2";
   const char* key3 = "too3";
@@ -124,9 +121,8 @@ TEST(TabletInfoManagerTest, compare)
 int main(int argc, char** argv)
 {
   ob_init_memory_pool();
-  testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
 
 

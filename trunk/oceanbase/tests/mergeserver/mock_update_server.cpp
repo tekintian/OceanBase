@@ -1,28 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * mock_update_server.cpp for ...
- *
- * Authors:
- *   xielun <xielun.szd@taobao.com>
- *
- */
 #include "mock_define.h"
 #include "mock_update_server.h"
 #include "common/ob_result.h"
 #include "common/ob_define.h"
 #include "common/ob_scanner.h"
+#include "common/ob_mutator.h"
 #include "common/ob_tablet_info.h"
+#include "common/ob_read_common_data.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace oceanbase::mergeserver::test;
+static CharArena allocator_;
 
 int MockUpdateServer::initialize()
 {
@@ -40,6 +29,11 @@ int MockUpdateServer::do_request(ObPacket* base_packet)
   {
     switch (packet_code)
     {
+    case OB_MS_MUTATE:
+      {
+        ret = handle_mutate_table(ob_packet);
+        break;
+      }
     case OB_GET_REQUEST:
       {
 #if false
@@ -56,6 +50,11 @@ int MockUpdateServer::do_request(ObPacket* base_packet)
 #else
         ret = handle_scan_table(ob_packet);
 #endif
+        break;
+      }
+    case OB_UPS_GET_LAST_FROZEN_VERSION:
+      {
+        ret = handle_frozen_version(ob_packet);
         break;
       }
     default:
@@ -112,7 +111,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
     // fake cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     ObString column_name;
     cell.table_id_ = scan_param.get_table_id();
     if (mock::join_table_id == cell.table_id_)
@@ -121,7 +120,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
       {
         if (mock::join_column1_id == scan_param.get_column_id()[i])
         {
-          row_key.assign((char*)mock::join_rowkey,strlen(mock::join_rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column1_ups_value_1,true);
@@ -134,7 +133,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
         }
         else if (mock::join_column2_id == scan_param.get_column_id()[i])
         {
-          row_key.assign((char*)mock::join_rowkey,strlen(mock::join_rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column2_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column2_ups_value_1,true);
@@ -159,7 +158,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
       {
         if (mock::column1_id == scan_param.get_column_id()[i])
         {
-          row_key.assign((char*)mock::rowkey,strlen(mock::rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::column1_ups_value_1,true);
@@ -172,7 +171,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
         }
         else if (mock::column2_id == scan_param.get_column_id()[i])
         {
-          row_key.assign((char*)mock::rowkey,strlen(mock::rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::column2_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::column2_ups_value_1,true);
@@ -213,7 +212,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
       ret = range.serialize(range_buf,sizeof(range_buf),pos);
       if (OB_SUCCESS == ret)
       {
-        range_str.assign(range_buf,pos);
+        range_str.assign(range_buf,static_cast<int32_t>(pos));
         // ret = scanner.set_ext_info(range_str);
       }
       pos = 0;
@@ -230,7 +229,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
       ret = send_response(OB_GET_RESPONSE, 1, out_buffer, connection, channel_id);
     }
   }
-  TBSYS_LOG(INFO, "handle scan root table result:ret[%d]", ret);
+  TBSYS_LOG(INFO, "handle scan table result:ret[%d]", ret);
   return ret;
 }
 
@@ -271,7 +270,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
     // fake cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     ObString column_name;
     for (int32_t i = 0; i < get_param.get_cell_size(); i ++)
     {
@@ -281,7 +280,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
       {
         if (mock::join_column1_id == cell.column_id_)
         {
-          row_key.assign((char*)mock::join_rowkey,strlen(mock::join_rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column1_ups_value_1,true);
@@ -294,7 +293,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
         }
         else if (mock::join_column2_id == cell.column_id_)
         {
-          row_key.assign((char*)mock::join_rowkey,strlen(mock::join_rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column2_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column2_ups_value_1,true);
@@ -307,7 +306,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
         }
         else if (0 == cell.column_id_)
         {
-          row_key.assign((char*)mock::join_rowkey,strlen(mock::join_rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column1_ups_value_1,true);
@@ -319,7 +318,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
           }
           if (OB_SUCCESS == ret)
           {
-            row_key.assign((char*)mock::join_rowkey,strlen(mock::join_rowkey));
+            row_key = make_rowkey(mock::join_rowkey, &allocator_);
             cell.column_id_ = mock::join_column2_id;
             cell.row_key_ = row_key;
             cell.value_.set_int(mock::join_column2_ups_value_1,true);
@@ -343,7 +342,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
       {
         if (mock::column1_id == cell.column_id_)
         {
-          row_key.assign((char*)mock::rowkey,strlen(mock::rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::column1_ups_value_1,true);
@@ -356,7 +355,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
         }
         else if (mock::column2_id == cell.column_id_)
         {
-          row_key.assign((char*)mock::rowkey,strlen(mock::rowkey));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::column2_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::column2_ups_value_1,true);
@@ -400,10 +399,9 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
     ret = scanner.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
     ret = send_response(OB_GET_RESPONSE, 1, out_buffer, connection, channel_id);
   }
-  TBSYS_LOG(INFO, "handle scan root table result:ret[%d]", ret);
+  TBSYS_LOG(INFO, "handle get table result:ret[%d]", ret);
   return ret;
 }
-
 
 
 int MockUpdateServer::handle_scan_table(ObPacket * ob_packet)
@@ -443,19 +441,19 @@ int MockUpdateServer::handle_scan_table(ObPacket * ob_packet)
     // fake cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     ObString column_name;
     char temp[256] = "";
     ObString table_name;
-    char * name = "update_test_table";
-    table_name.assign(name, strlen(name));
+    char * name = (char*)"update_test_table";
+    table_name.assign(name, static_cast<int32_t>(strlen(name)));
     cell.table_name_ = table_name;
     for (uint64_t i = 0; i < 10; ++i)
     {
       snprintf(temp, 256, "update_%lu_scan_row_key:%lu", i, i);
-      row_key.assign(temp, strlen(temp));
+      row_key = make_rowkey(temp, &allocator_);
       cell.row_key_ = row_key;
-      column_name.assign(temp, strlen(temp));
+      column_name.assign(temp, static_cast<int32_t>(strlen(temp)));
       cell.column_name_ = column_name;
       cell.value_.set_int(2234 + i);
       scanner.add_cell(cell);
@@ -466,7 +464,7 @@ int MockUpdateServer::handle_scan_table(ObPacket * ob_packet)
     //
     ret = send_response(OB_GET_RESPONSE, 1, out_buffer, connection, channel_id);
   }
-  TBSYS_LOG(INFO, "handle scan root table result:ret[%d]", ret);
+  TBSYS_LOG(INFO, "handle scan table result:ret[%d]", ret);
   return ret;
 }
 
@@ -507,19 +505,19 @@ int MockUpdateServer::handle_get_table(ObPacket * ob_packet)
     // fake data cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     ObString column_name;
     char temp[256] = "";
     ObString table_name;
-    char * name = "update_test_table";
-    table_name.assign(name, strlen(name));
+    char * name = (char*)"update_test_table";
+    table_name.assign(name, static_cast<int32_t>(strlen(name)));
     cell.table_name_ = table_name;
     for (uint64_t i = 0; i < 10; ++i)
     {
       snprintf(temp, 256, "update_%lu_get_row_key:%lu", i, i);
-      row_key.assign(temp, strlen(temp));
+      row_key = make_rowkey(temp, &allocator_);
       cell.row_key_ = row_key;
-      column_name.assign(temp, strlen(temp));
+      column_name.assign(temp, static_cast<int32_t>(strlen(temp)));
       cell.column_name_ = column_name;
       cell.value_.set_int(2234 + i);
       scanner.add_cell(cell);
@@ -528,14 +526,104 @@ int MockUpdateServer::handle_get_table(ObPacket * ob_packet)
     int32_t channel_id = ob_packet->getChannelId();
     ret = scanner.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
     //
-    ret = send_response(OB_SCAN_RESPONSE, 1, out_buffer, connection, channel_id);
+    ret = send_response(OB_GET_RESPONSE, 1, out_buffer, connection, channel_id);
   }
-  TBSYS_LOG(INFO, "handle scan root table result:ret[%d]", ret);
+  TBSYS_LOG(INFO, "handle get table result:ret[%d]", ret);
   return ret;
 }
 
+int MockUpdateServer::handle_mutate_table(ObPacket * ob_packet)
+{
+  int ret = OB_SUCCESS;
+  ObDataBuffer* data = ob_packet->get_buffer();
+  if (NULL == data)
+  {
+    ret = OB_ERROR;
+  }
 
+  ObMutator param;
+  if (OB_SUCCESS == ret)
+  {
+    ret = param.deserialize(data->get_data(), data->get_capacity(), data->get_position());
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "%s", "check param failed");
+    }
+  }
 
+  tbnet::Connection* connection = ob_packet->get_connection();
+  ThreadSpecificBuffer::Buffer* thread_buffer = response_packet_buffer_.get_buffer();
+  if (NULL == thread_buffer)
+  {
+    ret = OB_ERROR;
+  }
+  else
+  {
+    thread_buffer->reset();
+    ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
 
+    ObResultCode result_msg;
+    result_msg.result_code_ = ret;
+    ret = result_msg.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
 
+    // fake data cell
+    ObCellInfo cell;
+    ObScanner scanner;
+    ObRowkey row_key;
+    char temp[256] = "";
+    cell.table_id_ = 100;
+    for (uint64_t i = 0; i < 10; ++i)
+    {
+      snprintf(temp, 256, "update_%lu_get_row_key:%lu", i, i);
+      row_key = make_rowkey(temp, &allocator_);
+      cell.row_key_ = row_key;
+      cell.column_id_ = i + 1;
+      cell.value_.set_int(2234 + i);
+      scanner.add_cell(cell);
+    }
+    int32_t channel_id = ob_packet->getChannelId();
+    ret = scanner.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
+    ret = send_response(OB_MS_MUTATE_RESPONSE, 1, out_buffer, connection, channel_id);
+  }
+  TBSYS_LOG(INFO, "handle mutate table result:ret[%d]", ret);
+  return ret;
+}
+
+int MockUpdateServer::handle_frozen_version(ObPacket * ob_packet)
+{
+  int ret = OB_SUCCESS;
+  ObDataBuffer* data = ob_packet->get_buffer();
+  if (NULL == data)
+  {
+    ret = OB_ERROR;
+  }
+  else
+  {
+    tbnet::Connection* connection = ob_packet->get_connection();
+    ThreadSpecificBuffer::Buffer* thread_buffer = response_packet_buffer_.get_buffer();
+    if (NULL == thread_buffer)
+    {
+      ret = OB_ERROR;
+    }
+    else
+    {
+      thread_buffer->reset();
+      ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
+      ObResultCode result_msg;
+      result_msg.result_code_ = ret;
+      ret = result_msg.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
+      if (OB_SUCCESS == ret)
+      {
+        // timestamp
+        int64_t version = tbsys::CTimeUtil::getTime();
+        ret = serialization::encode_vi64(out_buffer.get_data(), out_buffer.get_capacity(), 
+            out_buffer.get_position(), version);
+        int32_t channel_id = ob_packet->getChannelId();
+        ret = send_response(OB_SCAN_RESPONSE, 1, out_buffer, connection, channel_id);
+      }
+    }
+  }
+  TBSYS_LOG(INFO, "handle get frozen version result:ret[%d]", ret);
+  return ret;
+}
 

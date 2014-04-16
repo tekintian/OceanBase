@@ -1,18 +1,19 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * test_scan_backward.cpp for ...
+ *
+ *
+ * Version: 0.1: test_ms_client.cpp,v 0.1 2011/01/07 16:55:10 xielun Exp $
  *
  * Authors:
- *   xielun <xielun.szd@taobao.com>
+ *     - some work details if you want
  *
  */
+
 #include <getopt.h>
 #include <string>
 #include <unistd.h>
@@ -25,13 +26,15 @@
 #include "common/ob_scanner.h"
 #include "common/ob_read_common_data.h"
 #include "common/ob_string.h"
-#include "common/ob_malloc.h" 
+#include "common/ob_malloc.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 
 const int64_t TIMEOUT =  100000000L;
+static CharArena allocator_;
 
 struct CParam
 {
@@ -43,7 +46,7 @@ struct CParam
   int64_t start_key_;
   int64_t end_key_;
   bool backward_;
-  oceanbase::common::ObSchemaManager *schema_mgr_;
+  oceanbase::common::ObSchemaManagerV2 *schema_mgr_;
 };
 
 
@@ -92,7 +95,7 @@ int parse_cmd_args(int argc, char **argv, CParam & param)
         param.server_addr_ = optarg;
         break;
       case 'b':
-        param.backward_ = true; 
+        param.backward_ = true;
         break;
       case 'p':
         param.server_port_ = atoi(optarg);
@@ -133,14 +136,14 @@ int parse_cmd_args(int argc, char **argv, CParam & param)
 
   if (OB_SUCCESS == err)
   {
-    param.schema_mgr_ = new ObSchemaManager;
+    param.schema_mgr_ = new ObSchemaManagerV2;
     if (NULL == param.schema_mgr_)
     {
       TBSYS_LOG(WARN, "%s", "fail to allocate memory for schema manager");
       err = OB_ALLOCATE_MEMORY_FAILED;
     }
   }
-  
+
   tbsys::CConfig config;
   if (OB_SUCCESS == err && !param.schema_mgr_->parse_from_file(param.schema_fname_,config))
   {
@@ -151,67 +154,66 @@ int parse_cmd_args(int argc, char **argv, CParam & param)
 }
 
 
-int check_result(const bool backward, const int64_t count, const ObSchema * schema,
+int check_result(const CParam & param, const bool backward, const int64_t count,
     const ObString & table_name, ObScanner & scanner)
 {
+  UNUSED(backward);
   int err = OB_SUCCESS;
-  if (NULL == schema)
+  int64_t row_key = 0;
+  int64_t value = 0;
+  int64_t column_id = 0;
+  ObCellInfo *cur_cell = NULL;
+  const ObColumnSchemaV2 * column = NULL;
+  bool row_change = false;
+  if (true == scanner.is_empty())
   {
-    TBSYS_LOG(ERROR, "check schema failed");
     err = OB_ERROR;
+    TBSYS_LOG(ERROR, "check read scanner result is empty");
   }
-  else
+  while ((OB_SUCCESS == err) && (scanner.next_cell() == OB_SUCCESS))
   {
-    int64_t row_key = 0;
-    int64_t value = 0;
-    int64_t column_id = 0;
-    const ObColumnSchema * column = NULL;
-    ObCellInfo *cur_cell = NULL;
-    bool row_change = false;
-    while (scanner.next_cell() == OB_SUCCESS)
+    err = scanner.get_cell(&cur_cell, &row_change);
+    if (OB_SUCCESS != err)
     {
-      err = scanner.get_cell(&cur_cell, &row_change);
-      if (OB_SUCCESS != err)
+      TBSYS_LOG(ERROR, "get cell failed:ret[%d]", err);
+      break;
+    }
+    else
+    {
+      if ((cur_cell->value_.get_type() != ObIntType)
+          || (cur_cell->table_name_ != table_name))
       {
-        TBSYS_LOG(ERROR, "get cell failed:ret[%d]", err);
+        TBSYS_LOG(ERROR, "check table name rowkey or type failed");
+        //hex_dump(cur_cell->row_key_.ptr(), cur_cell->row_key_.length());
+        cur_cell->value_.dump();
+        err = OB_ERROR;
         break;
       }
       else
       {
-        if ((cur_cell->value_.get_type() != ObIntType)
-            || (cur_cell->table_name_ != table_name))
+        column = param.schema_mgr_->get_column_schema(table_name, cur_cell->column_name_);
+        if (NULL == column)
         {
-          TBSYS_LOG(ERROR, "check table name rowkey or type failed");
-          hex_dump(cur_cell->row_key_.ptr(), cur_cell->row_key_.length());  
-          cur_cell->value_.dump();
+          TBSYS_LOG(ERROR, "find column info failed");
           err = OB_ERROR;
           break;
         }
-        else
+        column_id = column->get_id();
+        int64_t pos = 0;
+        ObString key = TestRowkeyHelper(cur_cell->row_key_, &allocator_);
+        serialization::decode_i64(key.ptr(), key.length(), pos, &row_key);
+        if (row_change)
         {
-          column = schema->find_column_info(cur_cell->column_name_);
-          if (NULL == column)
-          {
-            TBSYS_LOG(ERROR, "find column info failed");
-            err = OB_ERROR;
-            break;
-          }
-          column_id = column->get_id();
-          int64_t pos = 0;
-          serialization::decode_i64(cur_cell->row_key_.ptr(), cur_cell->row_key_.length(), pos, &row_key);
-          if (row_change)
-          {
-            TBSYS_LOG(INFO, "test scan rowkey {%ld}", row_key);
-          }
-          cur_cell->value_.get_int(value);
-          // TBSYS_LOG(INFO, "check value:value[%ld], rowkey[%ld], column[%lu]", value, row_key, column_id);
-          if (value != (((row_key << 24) | ((int64_t)column_id << 16)) | (count + 1)))
-          {
-            TBSYS_LOG(ERROR, "check value failed:value[%ld], new[%ld], rowkey[%ld], column[%lu], count[%ld]",
+          TBSYS_LOG(INFO, "test scan succ:table[%lu], rowkey[%ld]", column->get_table_id(), row_key);
+        }
+        cur_cell->value_.get_int(value);
+        // TBSYS_LOG(INFO, "check value:value[%ld], rowkey[%ld], column[%lu]", value, row_key, column_id);
+        if (value != (((row_key << 24) | ((int64_t)column_id << 16)) | (count + 1)))
+        {
+          TBSYS_LOG(ERROR, "check value failed:value[%ld], new[%ld], rowkey[%ld], column[%lu], count[%ld]",
               value, (((row_key << 24) | (column_id << 16)) | (count + 1)), row_key, column_id, count);
-            err = OB_ERROR;
-            break;
-          }
+          err = OB_ERROR;
+          break;
         }
       }
     }
@@ -219,7 +221,7 @@ int check_result(const bool backward, const int64_t count, const ObSchema * sche
   return err;
 }
 
-int get_first_row_key(ObScanner & scanner, ObString & rowkey)
+int get_first_row_key(ObScanner & scanner, ObRowkey & rowkey)
 {
   scanner.reset_iter();
   ObCellInfo * cell = NULL;
@@ -244,63 +246,50 @@ int scan(CParam &param, MockClient &client)
 {
   int err = OB_SUCCESS;
   ObString table_name;
-  table_name.assign(param.table_name_, strlen(param.table_name_));
-  const ObSchema * schema = NULL; 
-  uint64_t table_id = param.schema_mgr_->get_table_id(table_name);
-  if (table_id == 0)
+  table_name.assign(param.table_name_, static_cast<int32_t>(strlen(param.table_name_)));
+  const ObTableSchema * schema = param.schema_mgr_->get_table_schema(table_name);
+  if (NULL == schema)
   {
-    TBSYS_LOG(ERROR, "fail to find table id:name[%s]", param.table_name_);
+    TBSYS_LOG(ERROR, "check schema failed:id[%s]", param.table_name_);
     err = OB_ERROR;
   }
   else
   {
-    schema = param.schema_mgr_->get_table_schema(table_id);
-    if (NULL == schema)
-    {
-      TBSYS_LOG(ERROR, "check schema failed:id[%lu]", table_id);
-      err = OB_ERROR;
-    }
-  }
-  
-  if (OB_SUCCESS == err)
-  {
-    ObString start_rowkey_str;
-    ObString end_rowkey_str;
+    ObRowkey start_rowkey_str;
+    ObRowkey end_rowkey_str;
     ObString column_str;
     ObObj value_obj;
     ObScanner scanner;
     char buffer[128];
     char buffer_end[128];
-    const ObColumnSchema * column_info = NULL;
-    
     ObScanParam scan_param;
-    ObRange range;
+    ObNewRange range;
     int64_t pos = 0;
     if (param.start_key_ > 0)
     {
       serialization::encode_i64(buffer, sizeof(buffer), pos, param.start_key_);
-      start_rowkey_str.assign(buffer, pos);
+      start_rowkey_str = make_rowkey(buffer, pos, &allocator_);
       range.start_key_ = start_rowkey_str;
     }
     else
     {
-      range.border_flag_.set_min_value();
+      range.start_key_.set_min_row();
     }
 
     if (param.end_key_ > 0)
     {
       pos = 0;
       serialization::encode_i64(buffer_end, sizeof(buffer), pos, param.end_key_);
-      end_rowkey_str.assign(buffer_end, pos);
+      end_rowkey_str = make_rowkey(buffer_end, pos, &allocator_);
       range.end_key_ = end_rowkey_str;
     }
     else
     {
-      range.border_flag_.set_max_value();
+      range.end_key_.set_max_row();
     }
 
     // set borderflag
-    if (!range.border_flag_.is_min_value())
+    if (!range.start_key_.is_min_row())
     {
       range.border_flag_.unset_inclusive_start();
     }
@@ -309,7 +298,7 @@ int scan(CParam &param, MockClient &client)
       range.border_flag_.set_inclusive_start();
     }
 
-    if (range.border_flag_.is_max_value())
+    if (range.end_key_.is_max_row())
     {
       range.border_flag_.unset_inclusive_end();
     }
@@ -317,63 +306,65 @@ int scan(CParam &param, MockClient &client)
     {
       range.border_flag_.set_inclusive_end();
     }
-    
+
     scan_param.set(OB_INVALID_ID, table_name, range);
     if (param.backward_)
     {
       scan_param.set_scan_direction(ObScanParam::BACKWARD);
     }
-    
+
     ObVersionRange version_range;
     version_range.border_flag_.set_min_value();
     version_range.border_flag_.set_max_value();
     scan_param.set_version_range(version_range);
-    
-    int count = 0;
-    for (column_info = schema->column_begin(); column_info != schema->column_end(); ++column_info)
+
+    int32_t size = 0;
+    const ObColumnSchemaV2 * column_info = param.schema_mgr_->get_table_schema(schema->get_table_id(), size);
+    for (int32_t j = 0; j < size; ++j)
     {
       if (NULL == column_info)
       {
-        TBSYS_LOG(ERROR, "check column info failed:table[%lu]", table_id);
+        TBSYS_LOG(ERROR, "check column info failed:table[%lu]", schema->get_table_id());
         err = OB_ERROR;
         break;
       }
-      ++count;
-      column_str.assign(const_cast<char *>(column_info->get_name()), strlen(column_info->get_name()));
+      column_str.assign(const_cast<char *>(column_info->get_name()), static_cast<int32_t>(strlen(column_info->get_name())));
       if (column_info->get_type() == ObIntType)
       {
-        column_str.assign(const_cast<char *>(column_info->get_name()), strlen(column_info->get_name()));
+        column_str.assign(const_cast<char *>(column_info->get_name()), static_cast<int32_t>(strlen(column_info->get_name())));
         err = scan_param.add_column(column_str);
         if (err != OB_SUCCESS)
         {
-          TBSYS_LOG(ERROR, "add column failed:table[%lu], ret[%d]", table_id, err);
+          TBSYS_LOG(ERROR, "add column failed:table[%lu], ret[%d]", schema->get_table_id(), err);
           break;
         }
       }
+      ++column_info;
     }
-    
-    ObScanParam new_param = scan_param;
-    ObString max_key;
+
+    ObScanParam new_param;
+    new_param.safe_copy(scan_param);
+    ObRowkey max_key;
     while (err == OB_SUCCESS)
     {
       err = client.ups_scan(new_param, scanner, TIMEOUT);
       if (err != OB_SUCCESS)
       {
-        TBSYS_LOG(ERROR, "check scan failed:table[%lu], ret[%d]", table_id, err);
+        TBSYS_LOG(ERROR, "check scan failed:table[%lu], ret[%d]", schema->get_table_id(), err);
       }
       else
       {
-        err = check_result(param.backward_, param.add_count_, schema, table_name, scanner);
+        err = check_result(param, param.backward_, param.add_count_, table_name, scanner);
         if (err != OB_SUCCESS)
         {
-          TBSYS_LOG(ERROR, "check result failed:table[%lu], ret[%d]", table_id, err);
+          TBSYS_LOG(ERROR, "check result failed:table[%lu], ret[%d]", schema->get_table_id(), err);
         }
         else
         {
-          TBSYS_LOG(INFO, "check result succ:table[%lu]", table_id);
+          TBSYS_LOG(INFO, "check result succ:table[%lu]", schema->get_table_id());
         }
       }
-      
+
       if (OB_SUCCESS == err)
       {
         if (true == param.backward_)
@@ -393,25 +384,23 @@ int scan(CParam &param, MockClient &client)
           }
         }
       }
-      
+
       if (OB_SUCCESS == err)
       {
-        ObRange rang = *new_param.get_range();
+        ObNewRange rang = *new_param.get_range();
         if (true == param.backward_)
         {
-          range.border_flag_.unset_max_value();
           range.end_key_ = max_key;
           range.border_flag_.unset_inclusive_end();
         }
         else
         {
-          range.border_flag_.unset_min_value();
           range.start_key_ = max_key;
-          range.border_flag_.set_inclusive_start();
+          range.border_flag_.unset_inclusive_start();
         }
         new_param.set(OB_INVALID_ID, table_name, range);
       }
-      
+
       if (OB_SUCCESS == err)
       {
         bool is_fullfill = false;
@@ -448,7 +437,7 @@ int main(int argc, char **argv)
   MockClient client;
   if (OB_SUCCESS == err)
   {
-    init_mock_client(param.server_addr_, param.server_port_, client);  
+    init_mock_client(param.server_addr_, param.server_port_, client);
     err = scan(param, client);
     if (err != OB_SUCCESS)
     {
@@ -459,6 +448,3 @@ int main(int argc, char **argv)
   delete param.schema_mgr_;
   return err;
 }
-
-
-

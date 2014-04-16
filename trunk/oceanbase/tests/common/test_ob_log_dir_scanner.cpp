@@ -63,10 +63,10 @@ namespace oceanbase
       {
         uint64_t start = 10101010101010;
         create_file(start);
-        EXPECT_EQ(OB_SUCCESS, create_file("noise1"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise2"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise3"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise4"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise1"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise2"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise3"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise4"));
         ObLogDirScanner scanner;
         EXPECT_EQ(OB_SUCCESS, scanner.init(log_dir.c_str()));
 
@@ -79,7 +79,7 @@ namespace oceanbase
         uint64_t ckpt_id;
         EXPECT_EQ(OB_ENTRY_NOT_EXIST, scanner.get_max_ckpt_id(ckpt_id));
         EXPECT_EQ(0U, ckpt_id);
-        EXPECT_EQ(false, scanner.has_ckpt());
+        EXPECT_FALSE(scanner.has_ckpt());
       }
 
       TEST_F(TestObLogDirScanner, test_init2)
@@ -89,13 +89,13 @@ namespace oceanbase
         {
           create_file(i + start);
         }
-        EXPECT_EQ(OB_SUCCESS, create_file("noise1"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise2"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise3"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise4"));
-        EXPECT_EQ(OB_SUCCESS, create_file("4.checkpoint"));
-        EXPECT_EQ(OB_SUCCESS, create_file("400.checkpoint"));
-        EXPECT_EQ(OB_SUCCESS, create_file("1400.checkpoint"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise1"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise2"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise3"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise4"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"4.checkpoint"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"400.checkpoint"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"1400.checkpoint"));
         ObLogDirScanner scanner;
         EXPECT_EQ(OB_SUCCESS, scanner.init(log_dir.c_str()));
 
@@ -118,12 +118,12 @@ namespace oceanbase
         {
           create_file(i + start);
         }
-        EXPECT_EQ(OB_SUCCESS, create_file("noise1"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise2"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise3"));
-        EXPECT_EQ(OB_SUCCESS, create_file("44444."));
-        EXPECT_EQ(OB_SUCCESS, create_file(" 44444"));
-        EXPECT_EQ(OB_SUCCESS, create_file("444o44"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise1"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise2"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise3"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"44444."));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)" 44444"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"444o44"));
         ObLogDirScanner scanner;
         EXPECT_EQ(OB_DISCONTINUOUS_LOG, scanner.init(log_dir.c_str()));
 
@@ -136,7 +136,7 @@ namespace oceanbase
         uint64_t ckpt_id;
         EXPECT_EQ(OB_ENTRY_NOT_EXIST, scanner.get_max_ckpt_id(ckpt_id));
         EXPECT_EQ(0U, ckpt_id);
-        EXPECT_EQ(false, scanner.has_ckpt());
+        EXPECT_FALSE(scanner.has_ckpt());
       }
 
       TEST_F(TestObLogDirScanner, test_init4)
@@ -146,26 +146,26 @@ namespace oceanbase
         {
           create_file(i + start);
         }
-        EXPECT_EQ(OB_SUCCESS, create_file("44444444"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise1"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise2"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise3"));
-        EXPECT_EQ(OB_SUCCESS, create_file("44444."));
-        EXPECT_EQ(OB_SUCCESS, create_file(" 44444"));
-        EXPECT_EQ(OB_SUCCESS, create_file("444o44"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"44444444"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise1"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise2"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise3"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"44444."));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)" 44444"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"444o44"));
         ObLogDirScanner scanner;
         EXPECT_EQ(OB_DISCONTINUOUS_LOG, scanner.init(log_dir.c_str()));
 
         uint64_t log_id;
         EXPECT_EQ(OB_SUCCESS, scanner.get_min_log_id(log_id));
-        EXPECT_EQ(44444444, log_id);
+        EXPECT_EQ((uint64_t)44444444, log_id);
         EXPECT_EQ(OB_SUCCESS, scanner.get_max_log_id(log_id));
-        EXPECT_EQ(44444444, log_id);
+        EXPECT_EQ((uint64_t)44444444, log_id);
 
         uint64_t ckpt_id;
         EXPECT_EQ(OB_ENTRY_NOT_EXIST, scanner.get_max_ckpt_id(ckpt_id));
         EXPECT_EQ(0U, ckpt_id);
-        EXPECT_EQ(false, scanner.has_ckpt());
+        EXPECT_FALSE(scanner.has_ckpt());
       }
 
       TEST_F(TestObLogDirScanner, test_init5)
@@ -179,12 +179,12 @@ namespace oceanbase
         {
           create_file(i + start);
         }
-        EXPECT_EQ(OB_SUCCESS, create_file("noise1"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise2"));
-        EXPECT_EQ(OB_SUCCESS, create_file("noise3"));
-        EXPECT_EQ(OB_SUCCESS, create_file("44444."));
-        EXPECT_EQ(OB_SUCCESS, create_file(" 44444"));
-        EXPECT_EQ(OB_SUCCESS, create_file("444o44"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise1"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise2"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"noise3"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"44444."));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)" 44444"));
+        EXPECT_EQ(OB_SUCCESS, create_file((char*)"444o44"));
         ObLogDirScanner scanner;
         EXPECT_EQ(OB_DISCONTINUOUS_LOG, scanner.init(log_dir.c_str()));
 
@@ -197,7 +197,7 @@ namespace oceanbase
         uint64_t ckpt_id;
         EXPECT_EQ(OB_ENTRY_NOT_EXIST, scanner.get_max_ckpt_id(ckpt_id));
         EXPECT_EQ(0U, ckpt_id);
-        EXPECT_EQ(false, scanner.has_ckpt());
+        EXPECT_FALSE(scanner.has_ckpt());
       }
       
       TEST_F(TestObLogDirScanner, test_init6)
@@ -214,7 +214,7 @@ namespace oceanbase
         uint64_t ckpt_id;
         EXPECT_EQ(OB_ENTRY_NOT_EXIST, scanner.get_max_ckpt_id(ckpt_id));
         EXPECT_EQ(0U, ckpt_id);
-        EXPECT_EQ(false, scanner.has_ckpt());
+        EXPECT_FALSE(scanner.has_ckpt());
       }
     }
   }

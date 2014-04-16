@@ -3,6 +3,7 @@
 #include "lsync/ob_lsync_server.h"
 #include "common/ob_client_manager.h"
 #include "common/ob_base_client.h"
+#include "common/ob_malloc.h"
 
 using namespace oceanbase::common;
 namespace oceanbase

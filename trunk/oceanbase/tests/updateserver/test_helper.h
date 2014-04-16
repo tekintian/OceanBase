@@ -1,16 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * test_helper.h for ...
+ *
+ *
+ * Version: 0.1: test_helper.h,v 0.1 2010/08/23 19:28:39 chuanhui Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - some work details if you want
  *
  */
 #ifndef __OCEANBASE_UPDATESERVER_TEST_HELPER_H__
@@ -20,6 +21,7 @@
 #include "common/ob_define.h"
 #include "common/ob_iterator.h"
 #include "common/ob_string_buf.h"
+#include "common/ob_mutator.h"
 #include <gtest/gtest.h>
 
 using namespace std;
@@ -44,32 +46,25 @@ void check_string(const ObString& expected, const ObString& real)
 
 void check_obj(const ObObj& expected, const ObObj& real)
 {
+  UNUSED(expected);
+  UNUSED(real);
   // TODO
 }
 
-void check_range(const ObRange& expected, const ObRange& real)
-{
-  check_string(expected.end_key_, real.end_key_);
-  check_string(expected.start_key_, real.start_key_);
-  EXPECT_EQ(expected.border_flag_.inclusive_start(), real.border_flag_.inclusive_start());
-  EXPECT_EQ(expected.border_flag_.inclusive_end(), real.border_flag_.inclusive_end());
-}
 
 void check_cell(const ObCellInfo& expected, const ObCellInfo& real)
 {
   EXPECT_EQ(expected.column_id_, real.column_id_);
   EXPECT_EQ(expected.table_id_, real.table_id_);
-  check_string(expected.row_key_, real.row_key_);
+  EXPECT_EQ(expected.row_key_, real.row_key_);
 }
 
 void check_cell_with_name(const ObCellInfo& expected, const ObCellInfo& real)
 {
   check_string(expected.table_name_, real.table_name_);
-  check_string(expected.row_key_, real.row_key_);
+  EXPECT_EQ(expected.row_key_, real.row_key_);
   check_string(expected.column_name_, real.column_name_);
 }
 
 #endif //__TEST_HELPER_H__
-
-
 

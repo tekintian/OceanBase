@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * test_merger_timer_task.cpp for ...
- *
- * Authors:
- *   xielun <xielun.szd@taobao.com>
- *
- */
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -25,7 +10,7 @@
 #include "common/ob_tablet_info.h"
 #include "ob_ms_rpc_proxy.h"
 #include "ob_ms_tablet_location.h"
-#include "ob_ms_schema_manager.h"
+#include "common/ob_schema_manager.h"
 #include "ob_ms_rpc_stub.h"
 #include "ob_ms_schema_task.h"
 
@@ -79,41 +64,38 @@ TEST_F(TestTimerTask, test_fetch_schema)
   ObClientManager client_manager;
   EXPECT_TRUE(OB_SUCCESS == client_manager.initialize(&transport, &streamer));
   EXPECT_TRUE(OB_SUCCESS == stub.init(&buffer, &client_manager));
-  
+
   int64_t timeout = 100000;
   ObServer root_server;
   root_server.set_ipv4_addr(addr, MockRootServer::ROOT_SERVER_PORT);
 
-  ObServer update_server;
-  update_server.set_ipv4_addr(addr, MockUpdateServer::UPDATE_SERVER_PORT);
-  
   ObServer merge_server;
-  ObMergerRpcProxy proxy(1, timeout, root_server, update_server, merge_server);
-  
+  ObMergerRpcProxy proxy(1, timeout, root_server, merge_server);
+
   EXPECT_TRUE(OB_SUCCESS != proxy.init(NULL, NULL, NULL));
   EXPECT_TRUE(OB_SUCCESS != proxy.init(&stub, NULL, NULL));
-  
+
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
   ObSchemaManagerV2 temp(200);
-  EXPECT_TRUE(OB_SUCCESS == schema->init(temp));
+  EXPECT_TRUE(OB_SUCCESS == schema->init(false, temp));
 
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub, schema, location));
-  
+
   // not start root server
   ObMergerSchemaTask task;
   task.init(&proxy, schema);
   task.runTimerTask();
   EXPECT_TRUE(200 == schema->get_latest_version());
-  
+
   // stat failed
   ObMergerSchemaTask task1;
   task1.init(NULL, NULL);
   task1.runTimerTask();
   EXPECT_TRUE(200 == schema->get_latest_version());
-  
+
   // start root server
   MockRootServer server;
   MockServerRunner test_root_server(server);
@@ -125,7 +107,7 @@ TEST_F(TestTimerTask, test_fetch_schema)
   task.runTimerTask();
   // root server returned
   EXPECT_TRUE(1025 == schema->get_latest_version());
-  
+
   transport.stop();
   server.stop();
   sleep(5);
@@ -144,29 +126,26 @@ TEST_F(TestTimerTask, test_timer_fetch)
   ObClientManager client_manager;
   EXPECT_TRUE(OB_SUCCESS == client_manager.initialize(&transport, &streamer));
   EXPECT_TRUE(OB_SUCCESS == stub.init(&buffer, &client_manager));
-  
+
   int64_t timeout = 1000000;
   ObServer root_server;
   root_server.set_ipv4_addr(addr, MockRootServer::ROOT_SERVER_PORT);
 
-  ObServer update_server;
-  update_server.set_ipv4_addr(addr, MockUpdateServer::UPDATE_SERVER_PORT);
-  
   ObServer merge_server;
-  ObMergerRpcProxy proxy(1, timeout, root_server, update_server, merge_server);
-  
+  ObMergerRpcProxy proxy(1, timeout, root_server, merge_server);
+
   EXPECT_TRUE(OB_SUCCESS != proxy.init(NULL, NULL, NULL));
   EXPECT_TRUE(OB_SUCCESS != proxy.init(&stub, NULL, NULL));
-  
+
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
   ObSchemaManagerV2 temp(200);
-  EXPECT_TRUE(OB_SUCCESS == schema->init(temp));
+  EXPECT_TRUE(OB_SUCCESS == schema->init(false, temp));
 
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub, schema, location));
-  
+
   // not start root server
   ObMergerSchemaTask task;
   task.init(&proxy, schema);
@@ -175,24 +154,22 @@ TEST_F(TestTimerTask, test_timer_fetch)
   task.set_version(1024, 1025);
   EXPECT_TRUE(OB_SUCCESS == timer.schedule(task, 2000 * 1000, false));
   EXPECT_TRUE(200 == schema->get_latest_version());
-  
+
   // start root server
   MockRootServer server;
   MockServerRunner test_root_server(server);
   tbsys::CThread root_server_thread;
   root_server_thread.start(&test_root_server, NULL); 
   sleep(5);
-  
+
   // wait timer task processed 
   EXPECT_TRUE(1025 == schema->get_latest_version());
   timer.destroy();
-  
+
   transport.stop();
   server.stop();
   sleep(5);
 }
-
-
 
 
 

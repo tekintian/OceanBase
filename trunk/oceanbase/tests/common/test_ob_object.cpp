@@ -4,13 +4,12 @@
 #include <gtest/gtest.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include "tbnet.h"
 #include <fcntl.h>
 
 using namespace std;
 using namespace oceanbase;
 using namespace oceanbase::common;
-
-#define BLOCK_FUNC()  if (true) \
 
 void write_buf_to_file(const char *filename,const char *buf,int64_t size)
 {
@@ -27,13 +26,16 @@ void write_buf_to_file(const char *filename,const char *buf,int64_t size)
   return;
 }
 
-TEST(ObObj,Add)
+TEST(ObObj, test_apply)
 {
   ObObj t1;
-  t1.set_float(80469200.00);
+  t1.set_int(80469200);
   ObObj t2;
-  t2.set_float(6.00, true);
-  t1.apply(t2); 
+  t2.set_int(16, true);
+  t1.apply(t2);
+  int64_t val = 0;
+  ASSERT_EQ(OB_SUCCESS, t1.get_int(val));
+  ASSERT_EQ(80469216, val);
 }
 
 TEST(ObObj, test_bug)
@@ -44,12 +46,12 @@ TEST(ObObj, test_bug)
   int64_t len = 2048;
   int64_t pos = 0;
   ASSERT_EQ(obj.serialize(buf, len, pos), OB_SUCCESS);
-  
+
   pos = 0;
   ObObj temp;
   temp.set_int(200, true);
   temp.reset();
-  
+
   ASSERT_EQ(temp.deserialize(buf, len, pos), OB_SUCCESS);
   ASSERT_EQ(temp == obj, true);
 
@@ -58,6 +60,38 @@ TEST(ObObj, test_bug)
   test = temp;
   ASSERT_EQ(test == temp, true);
 }
+
+TEST(ObObj,Serialize_bool)
+{
+  ObObj t;
+  t.set_bool(true);
+
+  int64_t len = t.get_serialize_size();
+
+  ASSERT_EQ(len,2);
+
+  char *buf = (char *)malloc(len);
+
+  int64_t pos = 0;
+  ASSERT_EQ(t.serialize(buf,len,pos),OB_SUCCESS);
+  ASSERT_EQ(pos,len);
+
+  ObObj f;
+  pos = 0;
+  ASSERT_EQ(f.deserialize(buf,len,pos),OB_SUCCESS);
+  ASSERT_EQ(pos,len);
+
+  bool r = false;
+  bool l = false;
+
+  ASSERT_EQ(f.get_type(),t.get_type());
+  f.get_bool(r);
+
+  t.get_bool(l);
+  ASSERT_EQ(r,l);
+  free(buf);
+}
+
 
 
 TEST(ObObj,Serialize_int_add)
@@ -156,63 +190,6 @@ TEST(ObObj,int_boundary)
   free(buf);
 }
 
-
-TEST(ObObj,Serialize_float)
-{
-  ObObj t;
-  t.set_float(59.16);
-
-  int64_t len = t.get_serialize_size();
-  ASSERT_EQ(len,5);
-
-  char *buf = (char *)malloc(len);
-
-  int64_t pos = 0;
-  ASSERT_EQ(t.serialize(buf,len,pos),OB_SUCCESS);
-  ASSERT_EQ(pos,len);
-
-  ObObj f;
-  pos = 0;
-  ASSERT_EQ(f.deserialize(buf,len,pos),OB_SUCCESS);
-  ASSERT_EQ(pos,len);
-
-  float r = 0.0;
-  float l = 0.0;
-
-  ASSERT_EQ(f.get_type(),t.get_type());
-  f.get_float(r);
-  t.get_float(l);
-  ASSERT_FLOAT_EQ(r,l);
-
-  free(buf);
-  buf = NULL;
-
-  double d = 173.235;
-  t.set_double(d);
-  
-  len = t.get_serialize_size();
-  buf = (char *)malloc(len);
-  ASSERT_EQ(len,9);
-  
-  pos = 0;
-  ASSERT_EQ(t.serialize(buf,len,pos),OB_SUCCESS);
-  ASSERT_EQ(pos,len);
-
-  pos = 0;
-  ASSERT_EQ(f.deserialize(buf,len,pos),OB_SUCCESS);
-  ASSERT_EQ(pos,len);
-
-  double rd = 0.0;
-  double ld = 0.0;
-
-  ASSERT_EQ(f.get_type(),t.get_type());
-  f.get_double(rd);
-  t.get_double(ld);
-  ASSERT_DOUBLE_EQ(rd,ld);
-
-  free(buf);
-  buf = NULL;
-}
 
 TEST(ObObj,Serialize_datetime)
 {
@@ -358,331 +335,14 @@ TEST(ObObj,extend_type)
   ObObj f;
   pos = 0;
   ASSERT_EQ(f.deserialize(buf,len,pos),OB_SUCCESS);
- 
-  int64_t e = 0; 
+
+  int64_t e = 0;
   ASSERT_EQ(f.get_ext(e),0);
 
   ASSERT_EQ(e,90);
   free(buf);
 }
 
-
-TEST(ObObj,Compare)
-{
-  // type failed
-  BLOCK_FUNC()
-  {
-    ObObj t1;
-    ObObj t2;
-    t1.set_int(1234);
-    t2.set_float(1234.0);
-    
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == false);
-
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-
-    EXPECT_TRUE((t1 <= t2) == false);
-    EXPECT_TRUE((t2 <= t1) == false);
-    EXPECT_TRUE((t1 >= t2) == false);
-    EXPECT_TRUE((t2 >= t1) == false);
-    
-    ObString str_temp;
-    char * temp = "1234";
-    str_temp.assign(temp, strlen(temp));
-    t1.set_varchar(str_temp);
-    t2.set_datetime(1234);
-    
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == false);
-
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-
-    EXPECT_TRUE((t1 <= t2) == false);
-    EXPECT_TRUE((t2 <= t1) == false);
-    EXPECT_TRUE((t1 >= t2) == false);
-    EXPECT_TRUE((t2 >= t1) == false);
-  }
-  
-  // null type
-  BLOCK_FUNC()
-  {
-    ObObj t1;
-    t1.set_null();
-    ObObj t2;
-    t2.set_null();
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == false);
-
-    EXPECT_TRUE((t1 == t2) == true);
-    EXPECT_TRUE((t2 == t1) == true);
-    EXPECT_TRUE((t1 != t2) == false);
-    EXPECT_TRUE((t2 != t1) == false);
-
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == true);
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == true);
-
-    t2.set_datetime(1234);
-    EXPECT_TRUE((t1 < t2) == true);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == true);
-
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == false);
-    EXPECT_TRUE((t1 >= t2) == false);
-    EXPECT_TRUE((t2 >= t1) == true);
-  }
-
-  //lt gt eq ne le ge
-  BLOCK_FUNC()
-  {
-    ObObj t1;
-    ObObj t2;
-    t1.set_int(1234);
-  
-    t2.set_int(1233);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == true);
-    EXPECT_TRUE((t1 > t2) == true);
-    EXPECT_TRUE((t2 > t1) == false);
-
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-
-    EXPECT_TRUE((t1 <= t2) == false);
-    EXPECT_TRUE((t2 <= t1) == true);
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == false);
-
-    t2.set_int(1234);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == false);
-    
-    EXPECT_TRUE((t1 == t2) == true);
-    EXPECT_TRUE((t2 == t1) == true);
-    EXPECT_TRUE((t1 != t2) == false);
-    EXPECT_TRUE((t2 != t1) == false);
-    
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == true);
-    
-    t2.set_int(1235);
-    EXPECT_TRUE((t1 < t2) == true);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == true);
-    
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-    
-    EXPECT_TRUE((t1 >= t2) == false);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == false);
-  }
-  
-  // datetime
-  BLOCK_FUNC()
-  {
-    ObObj t1;
-    ObObj t2;
-    t1.set_createtime(1234000001L);
-    
-    // le
-    t2.set_modifytime(1234000001L);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == false);
-    
-    EXPECT_TRUE((t1 == t2) == true);
-    EXPECT_TRUE((t2 == t1) == true);
-    EXPECT_TRUE((t1 != t2) == false);
-    EXPECT_TRUE((t2 != t1) == false);
-    
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == true);
-    
-    t2.set_precise_datetime(1234000001L);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == false);
-    
-    EXPECT_TRUE((t1 == t2) == true);
-    EXPECT_TRUE((t2 == t1) == true);
-    EXPECT_TRUE((t1 != t2) == false);
-    EXPECT_TRUE((t2 != t1) == false);
-    
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == true);
-   
-    //lt
-    t2.set_datetime(1233);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == true);
-    EXPECT_TRUE((t1 > t2) == true);
-    EXPECT_TRUE((t2 > t1) == false);
-
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-
-    EXPECT_TRUE((t1 <= t2) == false);
-    EXPECT_TRUE((t2 <= t1) == true);
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == false);
-  
-    t2.set_createtime(1234000000L);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == true);
-    EXPECT_TRUE((t1 > t2) == true);
-    EXPECT_TRUE((t2 > t1) == false);
-
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-
-    EXPECT_TRUE((t1 <= t2) == false);
-    EXPECT_TRUE((t2 <= t1) == true);
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == false);
-    
-    // gt
-    t2.set_modifytime(1234000100L);
-    EXPECT_TRUE((t1 < t2) == true);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == true);
-    
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-    
-    EXPECT_TRUE((t1 >= t2) == false);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == false);
-    
-    t2.set_createtime(1234000010L);
-    EXPECT_TRUE((t1 < t2) == true);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == true);
-    
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-    
-    EXPECT_TRUE((t1 >= t2) == false);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == false);
-
-    // eq
-    t1.set_createtime(1234000000L);
-    t2.set_datetime(1234);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false); 
-    EXPECT_TRUE((t2 > t1) == false);
-    
-    EXPECT_TRUE((t1 == t2) == true);
-    EXPECT_TRUE((t2 == t1) == true);
-    EXPECT_TRUE((t1 != t2) == false);
-    EXPECT_TRUE((t2 != t1) == false);
-    
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == true);
-    
-    t1.set_datetime(1234);
-    t2.set_datetime(1234);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == false);
-    
-    EXPECT_TRUE((t1 == t2) == true);
-    EXPECT_TRUE((t2 == t1) == true);
-    EXPECT_TRUE((t1 != t2) == false);
-    EXPECT_TRUE((t2 != t1) == false);
-    
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == true);
-
-    t1.set_precise_datetime(123456);
-    t2.set_precise_datetime(123456);
-    EXPECT_TRUE((t1 < t2) == false);
-    EXPECT_TRUE((t2 < t1) == false);
-    EXPECT_TRUE((t1 > t2) == false);
-    EXPECT_TRUE((t2 > t1) == false);
-    
-    EXPECT_TRUE((t1 == t2) == true);
-    EXPECT_TRUE((t2 == t1) == true);
-    EXPECT_TRUE((t1 != t2) == false);
-    EXPECT_TRUE((t2 != t1) == false);
-    
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == true);
-    EXPECT_TRUE((t1 <= t2) == true);
-    EXPECT_TRUE((t2 <= t1) == true);
-    
-    t1.set_precise_datetime(123456);
-    t2.set_precise_datetime(123454);
-    EXPECT_TRUE((t1 == t2) == false);
-    EXPECT_TRUE((t2 == t1) == false);
-    EXPECT_TRUE((t1 != t2) == true);
-    EXPECT_TRUE((t2 != t1) == true);
-    
-    EXPECT_TRUE((t1 >= t2) == true);
-    EXPECT_TRUE((t2 >= t1) == false);
-    EXPECT_TRUE((t1 <= t2) == false);
-    EXPECT_TRUE((t2 <= t1) == true);
-  }
-}
-
-
-#if  1
 TEST(ObObj,Serialize)
 {
   ObObj t1;
@@ -692,6 +352,8 @@ TEST(ObObj,Serialize)
   ObObj t5;
   ObObj t6;
   ObObj t7;
+  ObObj t8;
+  ObObj t9;
   char buf[1024];
   int64_t len = 1024;
 
@@ -708,21 +370,20 @@ TEST(ObObj,Serialize)
   //null
   t3.set_null();
   ASSERT_EQ(t3.serialize(buf,len,pos),OB_SUCCESS);
-  //float
-  t4.set_float(59.16);
-  ASSERT_EQ(t4.serialize(buf,len,pos),OB_SUCCESS);
-  //double
-  t5.set_double(59.167);
-  ASSERT_EQ(t5.serialize(buf,len,pos),OB_SUCCESS);
   //datetime
   t6.set_datetime(1234898766);
   ASSERT_EQ(t6.serialize(buf,len,pos),OB_SUCCESS);
   //precise_datetime
   t7.set_precise_datetime(2348756909000000L);
   ASSERT_EQ(t7.serialize(buf,len,pos),OB_SUCCESS);
-  
+  //bool
+  t8.set_bool(true);
+  ASSERT_EQ(t8.serialize(buf,len,pos),OB_SUCCESS);
+  t9.set_bool(false);
+  ASSERT_EQ(t9.serialize(buf,len,pos),OB_SUCCESS);
+
   write_buf_to_file("Object",buf,pos);
-  
+
   ObObj f1;
   ObObj f2;
   ObObj f3;
@@ -730,6 +391,8 @@ TEST(ObObj,Serialize)
   ObObj f5;
   ObObj f6;
   ObObj f7;
+  ObObj f8;
+  ObObj f9;
   pos = 0;
   //int
   ASSERT_EQ(f1.deserialize(buf,len,pos),OB_SUCCESS);
@@ -740,7 +403,7 @@ TEST(ObObj,Serialize)
   t1.get_int(l);
   ASSERT_EQ(r,l);
   //printf("%ld,%ld\n",r,l);
-  
+
   //str
   ASSERT_EQ(f2.deserialize(buf,len,pos),OB_SUCCESS);
   ASSERT_EQ(f2.get_type(),t2.get_type());
@@ -752,27 +415,6 @@ TEST(ObObj,Serialize)
   //null
   ASSERT_EQ(f3.deserialize(buf,len,pos),OB_SUCCESS);
   ASSERT_EQ(f3.get_type(),t3.get_type());
-
-  //float
-  ASSERT_EQ(f4.deserialize(buf,len,pos),OB_SUCCESS);
-  float rf = 0.0;
-  float lf = 0.0;
-
-  ASSERT_EQ(f4.get_type(),t4.get_type());
-  f4.get_float(rf);
-  t4.get_float(lf);
-  ASSERT_FLOAT_EQ(rf,lf);
-
-  //double
-  ASSERT_EQ(f5.deserialize(buf,len,pos),OB_SUCCESS);
-
-  double rd = 0.0;
-  double ld = 0.0;
-
-  ASSERT_EQ(f5.get_type(),t5.get_type());
-  f5.get_double(rd);
-  t5.get_double(ld);
-  ASSERT_DOUBLE_EQ(rd,ld);
 
   //second
   ASSERT_EQ(f6.deserialize(buf,len,pos),OB_SUCCESS);
@@ -795,6 +437,23 @@ TEST(ObObj,Serialize)
   f7.get_precise_datetime(rm);
   t7.get_precise_datetime(lm);
   ASSERT_EQ(rm,lm);
+
+  //bool
+
+  bool lb = false;
+  bool rb = true;
+  ASSERT_EQ(f8.deserialize(buf,len,pos),OB_SUCCESS);
+  ASSERT_EQ(f8.get_type(),t8.get_type());
+  f8.get_bool(lb);
+  t8.get_bool(rb);
+  ASSERT_EQ(lb, rb);
+
+  ASSERT_EQ(f9.deserialize(buf,len,pos),OB_SUCCESS);
+  ASSERT_EQ(f9.get_type(),t9.get_type());
+  f9.get_bool(lb);
+  t9.get_bool(rb);
+  ASSERT_EQ(lb, rb);
+
 }
 
 TEST(ObObj, performance)
@@ -807,7 +466,7 @@ TEST(ObObj, performance)
   int64_t len = 2048;
   int64_t pos = 0;
   int64_t data = 0;
-  for (register int64_t i = 0; i < MAX_COUNT; ++i)
+  for (int64_t i = 0; i < MAX_COUNT; ++i)
   {
     obj.set_int(i);
     pos = 0;
@@ -817,7 +476,7 @@ TEST(ObObj, performance)
     ASSERT_EQ(obj.get_int(data), OB_SUCCESS);
     ASSERT_EQ(data, i);
   }
-  
+
   const char *tmp = "Hello12344556666777777777777545352454254254354354565463241242354345345345235345";
   ObObj obj2;
   ObString string;
@@ -833,10 +492,8 @@ TEST(ObObj, performance)
     ASSERT_EQ(obj2.get_varchar(string2), OB_SUCCESS);
   }
   // int64_t end_time = tbsys::CTimeUtil::getTime();
-  //printf("using time:%ld\n", end_time - start_time); 
+  //printf("using time:%ld\n", end_time - start_time);
 }
-
-#endif
 
 TEST(ObObj,NOP)
 {
@@ -844,7 +501,7 @@ TEST(ObObj,NOP)
   ObObj mut_obj;
   int64_t val = 0;
   int64_t mutation = 5;
-  ///create time 
+  ///create time
   src_obj.set_ext(ObActionFlag::OP_NOP);
   mut_obj.set_createtime(mutation);
   ASSERT_EQ(src_obj.apply(mut_obj),OB_SUCCESS);
@@ -852,7 +509,7 @@ TEST(ObObj,NOP)
   ASSERT_EQ(val, mutation);
   ASSERT_FALSE(src_obj.get_add());
 
-  ///create time 
+  ///create time
   src_obj.set_ext(ObActionFlag::OP_NOP);
   mut_obj.set_modifytime(mutation);
   ASSERT_EQ(src_obj.apply(mut_obj),OB_SUCCESS);
@@ -860,7 +517,7 @@ TEST(ObObj,NOP)
   ASSERT_EQ(val, mutation);
   ASSERT_FALSE(src_obj.get_add());
 
-  ///precise time 
+  ///precise time
   src_obj.set_ext(ObActionFlag::OP_NOP);
   mut_obj.set_precise_datetime(mutation);
   ASSERT_EQ(src_obj.apply(mut_obj),OB_SUCCESS);
@@ -875,7 +532,7 @@ TEST(ObObj,NOP)
   ASSERT_EQ(val, mutation);
   ASSERT_TRUE(src_obj.get_add());
 
-  ///date time 
+  ///date time
   src_obj.set_ext(ObActionFlag::OP_NOP);
   mut_obj.set_datetime(mutation);
   ASSERT_EQ(src_obj.apply(mut_obj),OB_SUCCESS);
@@ -909,14 +566,113 @@ TEST(ObObj,NOP)
   const char * cname = "cname";
   ObString str;
   ObString res;
-  str.assign((char*)cname, strlen(cname));
+  str.assign((char*)cname, static_cast<int32_t>(strlen(cname)));
   src_obj.set_ext(ObActionFlag::OP_NOP);
   mut_obj.set_varchar(str);
   ASSERT_EQ(src_obj.apply(mut_obj),OB_SUCCESS);
   ASSERT_EQ(src_obj.get_varchar(res),OB_SUCCESS);
-  ASSERT_EQ(res.length(), strlen(cname));
+  ASSERT_EQ((uint64_t)res.length(), strlen(cname));
   ASSERT_EQ(memcmp(res.ptr(),cname, res.length()), 0);
   ASSERT_FALSE(src_obj.get_add());
+}
+
+TEST(ObObj, size_of_obj)
+{
+  ASSERT_EQ(16U, sizeof(ObObj));
+}
+
+class ObObjDecimalTest: public ::testing::Test
+{
+  public:
+    ObObjDecimalTest();
+    virtual ~ObObjDecimalTest();
+    virtual void SetUp();
+    virtual void TearDown();
+  private:
+    // disallow copy
+    ObObjDecimalTest(const ObObjDecimalTest &other);
+    ObObjDecimalTest& operator=(const ObObjDecimalTest &other);
+  protected:
+    void test(const char* dec_str, const bool is_add);
+};
+
+ObObjDecimalTest::ObObjDecimalTest()
+{
+}
+
+ObObjDecimalTest::~ObObjDecimalTest()
+{
+}
+
+void ObObjDecimalTest::SetUp()
+{
+}
+
+void ObObjDecimalTest::TearDown()
+{
+}
+
+void ObObjDecimalTest::test(const char* n1_str, const bool is_add)
+{
+  ObObj obj1;
+  ObNumber n1;
+  ASSERT_EQ(OB_SUCCESS, n1.from(n1_str));
+  ASSERT_EQ(OB_SUCCESS, obj1.set_decimal(n1, 38, 38, is_add));
+  // serialize & deserialize
+  static const int16_t BUF_SIZE = 2048;
+  char buf[BUF_SIZE];
+  int64_t len = BUF_SIZE;
+  int64_t pos = 0;
+  ASSERT_EQ(OB_SUCCESS, obj1.serialize(buf, len, pos));
+  len = pos;
+  pos = 0;
+  ObObj obj2;
+  ObNumber n2;
+  bool ret_is_add;
+  ASSERT_EQ(OB_SUCCESS, obj2.deserialize(buf, len, pos));
+  ASSERT_EQ(OB_SUCCESS, obj2.get_decimal(n2, ret_is_add));
+  // verify
+  ASSERT_EQ(is_add, ret_is_add);
+  n2.to_string(buf, BUF_SIZE);
+  ASSERT_STREQ(n1_str, buf);
+}
+
+TEST_F(ObObjDecimalTest, basic_test)
+{
+  test("0", false);
+  test("0", true);
+  test("-1", false);
+  test("-1", true);
+  test("1", false);
+  test("1", true);
+  test("-123456789.123456789", false);
+  test("-123456789.123456789", true);
+  test("123456789.123456789", false);
+  test("123456789.123456789", true);
+}
+
+TEST_F(ObObjDecimalTest, test_apply)
+{
+  ObObj obj1;
+  ObNumber n1;
+  ASSERT_EQ(OB_SUCCESS, n1.from("12345.0"));
+  ASSERT_EQ(OB_SUCCESS, obj1.set_decimal(n1, 38, 38));
+  ObObj obj2;
+  ASSERT_EQ(OB_SUCCESS, obj2.set_decimal(n1, 38, 38, true));
+  ASSERT_EQ(OB_SUCCESS, obj1.apply(obj2));
+  // verify
+  static const int16_t BUF_SIZE = 2048;
+  char buf[BUF_SIZE];
+  ASSERT_EQ(OB_SUCCESS, obj1.get_decimal(n1));
+  n1.to_string(buf, BUF_SIZE);
+  ASSERT_STREQ("24690.0", buf);
+
+  n1.from("13579.0");
+  ASSERT_EQ(OB_SUCCESS, obj2.set_decimal(n1, 38, 38));
+  ASSERT_EQ(OB_SUCCESS, obj1.apply(obj2));
+  ASSERT_EQ(OB_SUCCESS, obj1.get_decimal(n1));
+  n1.to_string(buf, BUF_SIZE);
+  ASSERT_STREQ("13579.0", buf);
 }
 
 int main(int argc, char **argv)

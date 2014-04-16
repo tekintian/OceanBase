@@ -28,26 +28,26 @@ TEST(ObAggregateColumn, agg_func)
   ObAggregateColumn sum_column(5,0,SUM);
   agg_obj.set_int(5);
   new_obj.set_int(3);
-  EXPECT_EQ(sum_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(sum_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_int(result_val), OB_SUCCESS);
   EXPECT_EQ(result_val, 8);
 
   agg_obj.set_null();
   new_obj.set_null();
-  EXPECT_EQ(sum_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(sum_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_type(), ObNullType);
 
   agg_obj.set_null();
   new_obj.set_int(3);
-  EXPECT_EQ(sum_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(sum_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_int(result_val), OB_SUCCESS);
   EXPECT_EQ(result_val, 3);
 
   /// count
   ObAggregateColumn count_column(5,0,COUNT);
   agg_obj.set_int(5);
-  new_obj.set_double(8.0);
-  EXPECT_EQ(count_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  new_obj.set_int(8);
+  EXPECT_EQ(count_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_int(result_val), OB_SUCCESS);
   EXPECT_EQ(result_val, 6);
 
@@ -55,18 +55,18 @@ TEST(ObAggregateColumn, agg_func)
   ObAggregateColumn max_column(5,0,MAX);
   agg_obj.set_int(5);
   new_obj.set_int(8);
-  EXPECT_EQ(max_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(max_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_int(result_val), OB_SUCCESS);
   EXPECT_EQ(result_val, 8);
 
   agg_obj.set_null();
   new_obj.set_null();
-  EXPECT_EQ(max_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(max_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_type(), ObNullType);
 
   agg_obj.set_null();
   new_obj.set_int(3);
-  EXPECT_EQ(max_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(max_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_int(result_val), OB_SUCCESS);
   EXPECT_EQ(result_val, 3);
 
@@ -74,18 +74,18 @@ TEST(ObAggregateColumn, agg_func)
   ObAggregateColumn min_column(5,0,MIN);
   agg_obj.set_int(5);
   new_obj.set_int(8);
-  EXPECT_EQ(min_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(min_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_int(result_val), OB_SUCCESS);
   EXPECT_EQ(result_val, 5);
 
   agg_obj.set_null();
   new_obj.set_null();
-  EXPECT_EQ(min_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(min_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_type(), ObNullType);
 
   agg_obj.set_null();
   new_obj.set_int(3);
-  EXPECT_EQ(min_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS); 
+  EXPECT_EQ(min_column.calc_aggregate_val(agg_obj,new_obj), OB_SUCCESS);
   EXPECT_EQ(agg_obj.get_int(result_val), OB_SUCCESS);
   EXPECT_EQ(result_val, 3);
 }
@@ -105,28 +105,17 @@ TEST(ObGroupByParam, interface)
   ObString group_by_column_name;
   ObString aggregate_column_name;
   ObString as_column_name;
-  column_name.assign(const_cast<char*>("return"),strlen("return"));
+  column_name.assign(const_cast<char*>("return"),static_cast<int32_t>(strlen("return")));
   EXPECT_EQ(buffer.write_string(column_name,&return_column_name),OB_SUCCESS);
-  column_name.assign(const_cast<char*>("groupby"),strlen("groupby"));
+  column_name.assign(const_cast<char*>("groupby"),static_cast<int32_t>(strlen("groupby")));
   EXPECT_EQ(buffer.write_string(column_name,&group_by_column_name),OB_SUCCESS);
-  column_name.assign(const_cast<char*>("aggregate"),strlen("aggregate"));
+  column_name.assign(const_cast<char*>("aggregate"),static_cast<int32_t>(strlen("aggregate")));
   EXPECT_EQ(buffer.write_string(column_name,&aggregate_column_name),OB_SUCCESS);
-  column_name.assign(const_cast<char*>("as"),strlen("as"));
+  column_name.assign(const_cast<char*>("as"),static_cast<int32_t>(strlen("as")));
   EXPECT_EQ(buffer.write_string(column_name,&as_column_name),OB_SUCCESS);
 
   /// test add column order
-  EXPECT_EQ(param.add_return_column(return_column_name),OB_SUCCESS);  
-  EXPECT_NE(param.add_groupby_column(group_by_column_name),OB_SUCCESS);  
-  EXPECT_EQ(param.add_aggregate_column(aggregate_column_name,as_column_name,SUM),OB_SUCCESS);
-
-  /// test add column order
-  param.clear();
-  EXPECT_EQ(param.add_aggregate_column(aggregate_column_name,as_column_name,SUM),OB_SUCCESS);
-  EXPECT_NE(param.add_groupby_column(group_by_column_name),OB_SUCCESS);
-  EXPECT_NE(param.add_return_column(return_column_name),OB_SUCCESS);
-
-  /// test add column order
-  param.clear();
+  param.reset();
   EXPECT_EQ(param.add_groupby_column(group_by_column_name),OB_SUCCESS);
   EXPECT_EQ(param.add_return_column(return_column_name),OB_SUCCESS);
   EXPECT_EQ(param.add_aggregate_column(aggregate_column_name,as_column_name,SUM),OB_SUCCESS);
@@ -141,20 +130,9 @@ TEST(ObGroupByParam, interface)
   int64_t group_by_column_idx = 1;
   int64_t return_column_idx = 2;
   int64_t aggregate_column_idx = 3;
-  /// test add column order
-  param.clear();
-  EXPECT_EQ(param.add_return_column(return_column_idx),OB_SUCCESS);  
-  EXPECT_NE(param.add_groupby_column(group_by_column_idx),OB_SUCCESS);  
-  EXPECT_EQ(param.add_aggregate_column(aggregate_column_idx,SUM),OB_SUCCESS);
 
   /// test add column order
-  param.clear();
-  EXPECT_EQ(param.add_aggregate_column(aggregate_column_idx,SUM),OB_SUCCESS);
-  EXPECT_NE(param.add_groupby_column(group_by_column_idx),OB_SUCCESS);
-  EXPECT_NE(param.add_return_column(return_column_idx),OB_SUCCESS);
-
-  /// test add column order
-  param.clear();
+  param.reset();
   EXPECT_EQ(param.add_groupby_column(group_by_column_idx),OB_SUCCESS);
   EXPECT_EQ(param.add_return_column(return_column_idx),OB_SUCCESS);
   EXPECT_EQ(param.add_aggregate_column(aggregate_column_idx,SUM),OB_SUCCESS);
@@ -167,32 +145,32 @@ TEST(ObGroupByParam, interface)
   EXPECT_TRUE(decoded_param == param);
 
   /// id and name mix
-  param.clear();
+  param.reset();
   EXPECT_EQ(param.add_groupby_column(group_by_column_idx),OB_SUCCESS);
   EXPECT_EQ(param.add_aggregate_column(aggregate_column_name,as_column_name,SUM),OB_SUCCESS);
   pos = 0;
   EXPECT_NE(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
 
   /// name and id mix
-  param.clear();
+  param.reset();
   EXPECT_EQ(param.add_groupby_column(group_by_column_name),OB_SUCCESS);
   EXPECT_EQ(param.add_aggregate_column(aggregate_column_idx,SUM),OB_SUCCESS);
   pos = 0;
   EXPECT_NE(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
 
   /// no aggregate column
-  param.clear();
+  param.reset();
   EXPECT_EQ(param.add_groupby_column(group_by_column_name),OB_SUCCESS);
   EXPECT_EQ(param.add_return_column(return_column_name),OB_SUCCESS);
   pos = 0;
-  EXPECT_NE(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
+  EXPECT_EQ(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
 
   /// no aggregate column
-  param.clear();
+  param.reset();
   EXPECT_EQ(param.add_groupby_column(group_by_column_idx),OB_SUCCESS);
   EXPECT_EQ(param.add_return_column(return_column_idx),OB_SUCCESS);
   pos = 0;
-  EXPECT_NE(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
+  EXPECT_EQ(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
 
   /// empty param
   ObGroupByParam empty_param;
@@ -201,7 +179,7 @@ TEST(ObGroupByParam, interface)
   EXPECT_EQ(empty_param.serialize(serialize_buf,buf_len,pos),OB_SUCCESS);
   EXPECT_EQ(pos,0);
   ObObj ext_obj;
-  ext_obj.set_ext(ObActionFlag::FILTER_PARAM_FIELD);
+  ext_obj.set_ext(ObActionFlag::SELECT_CLAUSE_WHERE_FIELD);
   pos = 0;
   EXPECT_EQ(ext_obj.serialize(serialize_buf, buf_len,pos), OB_SUCCESS);
   data_len = pos;
@@ -218,7 +196,7 @@ TEST(ObGroupByParam, function)
   int64_t buf_len = sizeof(serialize_buf);
   int64_t pos = 0;
   int64_t data_len = 0;
-  /// row width 7; 
+  /// row width 7;
   /// 0, not used int
   /// 1, groupby int
   /// 2, return int
@@ -274,7 +252,7 @@ TEST(ObGroupByParam, function)
   int64_t agg_sum = 0;
   int64_t agg_count = 0;
   ObCellInfo cell;
-  ObCellInfo *cell_out = NULL;
+  ObInnerCellInfo *cell_out = NULL;
   ObString str;
   ObObj return_str_obj;
   ObObj groupby_str_obj;
@@ -297,16 +275,16 @@ TEST(ObGroupByParam, function)
   EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   /// return cell, 2
   cell.value_.set_int(return_int_value);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   /// groupby cell, 3
-  str.assign(const_cast<char*>("groupby"),strlen("groupby"));
+  str.assign(const_cast<char*>("groupby"),static_cast<int32_t>(strlen("groupby")));
   cell.value_.set_varchar(str);
   EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   groupby_str_obj = cell_out->value_;
   /// return cell, 4
-  str.assign(const_cast<char*>("return"),strlen("return"));
+  str.assign(const_cast<char*>("return"),static_cast<int32_t>(strlen("return")));
   cell.value_.set_varchar(str);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   return_str_obj = cell_out->value_;
   /// aggregate value, 5
   cell.value_.set_int(5);
@@ -314,9 +292,9 @@ TEST(ObGroupByParam, function)
   agg_count += 1;
   agg_sum += 5;
   /// cell not used, 6
-  str.assign(const_cast<char*>("nouse"),strlen("nouse"));
+  str.assign(const_cast<char*>("nouse"),static_cast<int32_t>(strlen("nouse")));
   cell.value_.set_varchar(str);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
 
   /// aggregate first cell
   EXPECT_EQ(param.aggregate(org_cell_array,0,6,agg_cell_array,0,5), OB_SUCCESS);
@@ -342,25 +320,25 @@ TEST(ObGroupByParam, function)
   EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   /// return cell, 2
   cell.value_.set_int(return_int_value + 6);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   /// groupby cell, 3
-  str.assign(const_cast<char*>("groupby"),strlen("groupby"));
+  str.assign(const_cast<char*>("groupby"),static_cast<int32_t>(strlen("groupby")));
   cell.value_.set_varchar(str);
   EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   groupby_str_obj = cell_out->value_;
   /// return cell, 4
-  str.assign(const_cast<char*>("return1"),strlen("return1"));
+  str.assign(const_cast<char*>("return1"),static_cast<int32_t>(strlen("return1")));
   cell.value_.set_varchar(str);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   /// aggregate value, 5
   cell.value_.set_int(-8);
   EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   agg_count += 1;
   agg_sum += -8;
   /// cell not used, 6
-  str.assign(const_cast<char*>("nouse1"),strlen("nouse1"));
+  str.assign(const_cast<char*>("nouse1"),static_cast<int32_t>(strlen("nouse1")));
   cell.value_.set_varchar(str);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
 
   /// aggregate second cell
   EXPECT_EQ(param.aggregate(org_cell_array,7,13,agg_cell_array,0,5), OB_SUCCESS);
@@ -397,25 +375,25 @@ TEST(ObGroupByParam, function)
   EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   /// return cell, 2
   cell.value_.set_int(return_int_value + 6);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   /// groupby cell, 3
-  str.assign(const_cast<char*>("groupby1"),strlen("groupby1"));
+  str.assign(const_cast<char*>("groupby1"),static_cast<int32_t>(strlen("groupby1")));
   cell.value_.set_varchar(str);
   EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   groupby_str_obj = cell_out->value_;
   /// return cell, 4
-  str.assign(const_cast<char*>("return1"),strlen("return1"));
+  str.assign(const_cast<char*>("return1"),static_cast<int32_t>(strlen("return1")));
   cell.value_.set_varchar(str);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   /// aggregate value, 5
   cell.value_.set_int(-8);
   EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
   agg_count += 1;
   agg_sum += -8;
   /// cell not used, 6
-  str.assign(const_cast<char*>("nouse1"),strlen("nouse1"));
+  str.assign(const_cast<char*>("nouse1"),static_cast<int32_t>(strlen("nouse1")));
   cell.value_.set_varchar(str);
-  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS); 
+  EXPECT_EQ(org_cell_array.append(cell, cell_out),OB_SUCCESS);
 
   /// aggregate third row
   agg_sum_obj.set_int(agg_sum);
@@ -447,9 +425,220 @@ TEST(ObGroupByParam, function)
   EXPECT_TRUE(all_3rd_org_key == all_2nd_org_key);
 }
 
+
+TEST(ObGroupByParam, str_expr_composite_column)
+{
+  char serialize_buf[2048];
+  int64_t buf_len = sizeof(serialize_buf);
+  UNUSED(buf_len);
+  int64_t pos = 0;
+  UNUSED(pos);
+  int64_t data_len = 0;
+  UNUSED(data_len);
+  ObStringBuf buffer;
+  ObGroupByParam param;
+  ObGroupByParam decoded_param;
+  ObString stored_expr;
+  ObString stored_cname;
+  ObString str;
+  const char *c_str =NULL;
+  c_str = "groupby_c";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_groupby_column(stored_cname), OB_SUCCESS);
+
+  c_str = "agg_c";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_aggregate_column(stored_cname, stored_cname, SUM, false), OB_SUCCESS);
+
+  c_str ="`a` + `b`";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_expr), OB_SUCCESS);
+
+  c_str = "a_add_b";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_column(stored_expr, stored_cname ,false), OB_SUCCESS);
+
+  EXPECT_EQ(param.get_composite_columns().get_array_index(), 1);
+  EXPECT_EQ(param.get_groupby_columns().get_array_index(), 1);
+  EXPECT_EQ(param.get_aggregate_columns().get_array_index(), 1);
+  EXPECT_EQ(param.get_return_columns().get_array_index(),0);
+  EXPECT_EQ(param.get_return_infos().get_array_index(), 3);
+  EXPECT_EQ(*param.get_return_infos().at(0), true);
+  EXPECT_EQ(*param.get_return_infos().at(1), false);
+  EXPECT_EQ(*param.get_return_infos().at(2), false);
+  EXPECT_TRUE(param.get_composite_columns().at(0)->get_as_column_name() == stored_cname);
+  EXPECT_NE(param.get_composite_columns().at(0)->get_as_column_name().ptr() , stored_cname.ptr());
+  EXPECT_TRUE(param.get_composite_columns().at(0)->get_infix_expr() == stored_expr);
+  EXPECT_NE(param.get_composite_columns().at(0)->get_infix_expr().ptr() , stored_expr.ptr());
+
+  EXPECT_EQ(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
+  data_len = pos;
+  pos = 0;
+  EXPECT_EQ(decoded_param.deserialize(serialize_buf,data_len,pos), OB_SUCCESS);
+
+  EXPECT_EQ(decoded_param.get_composite_columns().get_array_index(), 1);
+  EXPECT_EQ(decoded_param.get_groupby_columns().get_array_index(), 1);
+  EXPECT_EQ(decoded_param.get_aggregate_columns().get_array_index(), 1);
+  EXPECT_EQ(decoded_param.get_return_columns().get_array_index(),0);
+  EXPECT_EQ(decoded_param.get_return_infos().get_array_index(), 3);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(0), true);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(1), false);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(2), false);
+  EXPECT_TRUE(decoded_param.get_composite_columns().at(0)->get_as_column_name() == stored_cname);
+  EXPECT_NE(decoded_param.get_composite_columns().at(0)->get_as_column_name().ptr() , stored_cname.ptr());
+  EXPECT_TRUE(decoded_param.get_composite_columns().at(0)->get_infix_expr() == stored_expr);
+  EXPECT_NE(decoded_param.get_composite_columns().at(0)->get_infix_expr().ptr() , stored_expr.ptr());
+
+  ObGroupByParam safe_copied_param;
+  EXPECT_EQ(safe_copied_param.safe_copy(decoded_param), OB_SUCCESS);
+  EXPECT_EQ(safe_copied_param.get_composite_columns().get_array_index(), 1);
+  EXPECT_EQ(safe_copied_param.get_groupby_columns().get_array_index(), 1);
+  EXPECT_EQ(safe_copied_param.get_aggregate_columns().get_array_index(), 1);
+  EXPECT_EQ(safe_copied_param.get_return_columns().get_array_index(),0);
+  EXPECT_EQ(safe_copied_param.get_return_infos().get_array_index(), 3);
+  EXPECT_EQ(*safe_copied_param.get_return_infos().at(0), true);
+  EXPECT_EQ(*safe_copied_param.get_return_infos().at(1), false);
+  EXPECT_EQ(*safe_copied_param.get_return_infos().at(2), false);
+  EXPECT_TRUE(safe_copied_param.get_composite_columns().at(0)->get_as_column_name() == stored_cname);
+  EXPECT_NE(safe_copied_param.get_composite_columns().at(0)->get_as_column_name().ptr() , stored_cname.ptr());
+  EXPECT_TRUE(safe_copied_param.get_composite_columns().at(0)->get_infix_expr() == stored_expr);
+  EXPECT_NE(safe_copied_param.get_composite_columns().at(0)->get_infix_expr().ptr() , stored_expr.ptr());
+}
+
+TEST(ObGroupByParam, return_info)
+{
+  char serialize_buf[2048];
+  int64_t buf_len = sizeof(serialize_buf);
+  UNUSED(buf_len);
+  int64_t pos = 0;
+  UNUSED(pos);
+  int64_t data_len = 0;
+  UNUSED(data_len);
+  ObStringBuf buffer;
+  ObGroupByParam param;
+  ObGroupByParam decoded_param;
+  ObString stored_expr;
+  ObString stored_cname;
+  ObString str;
+  const char *c_str =NULL;
+  c_str = "groupby_c";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_groupby_column(stored_cname), OB_SUCCESS);
+
+  c_str = "agg_c";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_aggregate_column(stored_cname, stored_cname, SUM, false), OB_SUCCESS);
+
+  c_str ="`a` + `b`";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_expr), OB_SUCCESS);
+
+  c_str = "a_add_b";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_column(stored_expr, stored_cname ,false), OB_SUCCESS);
+
+  (const_cast<oceanbase::common::ObArrayHelpers<bool>*>(&param.get_return_infos()))->clear();
+  EXPECT_EQ(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
+  data_len = pos;
+  pos = 0;
+  EXPECT_EQ(decoded_param.deserialize(serialize_buf,data_len,pos), OB_SUCCESS);
+
+  EXPECT_EQ(decoded_param.get_return_infos().get_array_index(), 3);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(0), true);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(1), true);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(2), true);
+
+  ObGroupByParam safe_copied_param;
+  EXPECT_EQ(safe_copied_param.safe_copy(decoded_param), OB_SUCCESS);
+  EXPECT_EQ(safe_copied_param.get_return_infos().get_array_index(), 3);
+  EXPECT_EQ(*safe_copied_param.get_return_infos().at(0), true);
+  EXPECT_EQ(*safe_copied_param.get_return_infos().at(1), true);
+  EXPECT_EQ(*safe_copied_param.get_return_infos().at(2), true);
+}
+
+TEST(ObGroupByParam, having)
+{
+  char serialize_buf[2048];
+  int64_t buf_len = sizeof(serialize_buf);
+  UNUSED(buf_len);
+  int64_t pos = 0;
+  UNUSED(pos);
+  int64_t data_len = 0;
+  UNUSED(data_len);
+  ObStringBuf buffer;
+  ObGroupByParam param;
+  ObGroupByParam decoded_param;
+  ObString stored_expr;
+  ObString stored_cname;
+  ObString str;
+  const char *c_str =NULL;
+  c_str = "groupby_c";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_groupby_column(stored_cname), OB_SUCCESS);
+
+  c_str = "agg_c";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_aggregate_column(stored_cname, stored_cname, SUM, false), OB_SUCCESS);
+
+  c_str ="`a` + `b` > 5";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_expr), OB_SUCCESS);
+
+  c_str = "a_add_b";
+  str.assign((char*)c_str, (int)strlen(c_str));
+  ASSERT_EQ(buffer.write_string(str,&stored_cname), OB_SUCCESS);
+  EXPECT_EQ(param.add_having_cond(stored_expr), OB_SUCCESS);
+
+  EXPECT_EQ(param.serialize(serialize_buf,buf_len,pos), OB_SUCCESS);
+  data_len = pos;
+  pos = 0;
+  EXPECT_EQ(decoded_param.deserialize(serialize_buf,data_len,pos), OB_SUCCESS);
+
+  EXPECT_EQ(decoded_param.get_return_infos().get_array_index(), 3);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(0), true);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(1), false);
+  EXPECT_EQ(*decoded_param.get_return_infos().at(2), false);
+  EXPECT_EQ(decoded_param.get_aggregate_columns().get_array_index(), 1);
+  EXPECT_EQ(decoded_param.get_groupby_columns().get_array_index(), 1);
+  EXPECT_EQ(decoded_param.get_composite_columns().get_array_index(), 1);
+
+  EXPECT_TRUE(decoded_param.get_composite_columns().at(0)->get_infix_expr() == stored_expr);
+  EXPECT_NE(decoded_param.get_composite_columns().at(0)->get_infix_expr().ptr() , stored_expr.ptr());
+
+  char having_as_cname[128];
+  ObString having_as_cname_str;
+  having_as_cname_str.assign(having_as_cname,
+    snprintf(having_as_cname,sizeof(having_as_cname), "%s%d", GROUPBY_CLAUSE_HAVING_COND_AS_CNAME_PREFIX,2));
+  EXPECT_TRUE(decoded_param.get_composite_columns().at(0)->get_as_column_name() == having_as_cname_str);
+
+  EXPECT_EQ(decoded_param.get_having_condition().get_count(), 1);
+  EXPECT_TRUE(decoded_param.get_having_condition()[0]->get_column_name() == having_as_cname_str );
+  EXPECT_TRUE(decoded_param.get_having_condition()[0]->get_logic_operator() == NE );
+  ObObj cond_val;
+  cond_val.set_bool(false);
+  EXPECT_TRUE(decoded_param.get_having_condition()[0]->get_right_operand() == cond_val);
+
+  ObGroupByParam safe_copied_param;
+  EXPECT_EQ(safe_copied_param.safe_copy(decoded_param), OB_SUCCESS);
+  EXPECT_TRUE(safe_copied_param.get_composite_columns().at(0)->get_as_column_name() == having_as_cname_str);
+  EXPECT_EQ(safe_copied_param.get_having_condition().get_count(), 1);
+  EXPECT_TRUE(safe_copied_param.get_having_condition()[0]->get_column_name() == having_as_cname_str );
+  EXPECT_TRUE(safe_copied_param.get_having_condition()[0]->get_logic_operator() == NE );
+  EXPECT_TRUE(safe_copied_param.get_having_condition()[0]->get_right_operand() == cond_val);
+}
+
+
 int main(int argc, char **argv)
 {
-  srandom(time(NULL));
+  srandom(static_cast<uint32_t>(time(NULL)));
   ob_init_memory_pool(64*1024);
   InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

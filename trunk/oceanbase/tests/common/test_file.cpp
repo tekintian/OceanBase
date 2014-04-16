@@ -11,7 +11,9 @@
 using namespace oceanbase;
 using namespace common;
 
-static char *fname = "./test_file.data";
+static char *fname = (char*)"./test_file.data";
+static char *async_fname = (char*)"./test_file.async.data";
+static char *sync_fname = (char*)"./test_file.sync.data";
 static char *buf = NULL;
 static const int64_t size = 16 * 1024 * 1024;
 static const int64_t mb_num = 16;
@@ -116,7 +118,7 @@ TEST(TestObFile, direct)
   ObFileReader reader;
 
   ObString str_fname;
-  str_fname.assign(fname, strlen(fname));
+  str_fname.assign(fname, static_cast<int32_t>(strlen(fname)));
 
   int ret = appender.open(str_fname, true, true, true);
   EXPECT_EQ(OB_SUCCESS, ret);
@@ -197,7 +199,7 @@ TEST(TestObFile, normal)
   ObFileReader reader;
 
   ObString str_fname;
-  str_fname.assign(fname, strlen(fname));
+  str_fname.assign(fname, static_cast<int32_t>(strlen(fname)));
 
   int ret = appender.open(str_fname, false, true, true);
   EXPECT_EQ(OB_SUCCESS, ret);
@@ -225,6 +227,7 @@ TEST(TestObFile, normal)
     //EXPECT_EQ(OB_SUCCESS, ret);
   }
 
+  sleep(10);
   appender.close();
 
   EXPECT_EQ(total_size, get_file_size(fname));
@@ -276,7 +279,7 @@ TEST(TestObFile, append_bounder)
 {
   ObFileAppender appender;
   ObString str_fname;
-  str_fname.assign(fname, strlen(fname) + 1);
+  str_fname.assign(fname, static_cast<int32_t>(strlen(fname) + 1));
   appender.open(str_fname, true, true, true);
   char *buf = (char*)malloc(2 * 1024 * 1024);
   int64_t size = 2 * 1024 * 1024 - 8 * 1024;
@@ -287,12 +290,104 @@ TEST(TestObFile, append_bounder)
   appender.append(buf, size, false);
   EXPECT_EQ(4 * 1024 * 1024 + 1022, appender.get_file_pos());
   appender.close();
+  free(buf);
+}
+
+TEST(TestObFile, async_append_bounder)
+{
+  ObFileAsyncAppender appender;
+  ObString str_fname;
+  str_fname.assign(async_fname, static_cast<int32_t>(strlen(async_fname) + 1));
+  appender.open(str_fname, true, true, true);
+  char *buf = (char*)malloc(70 * 1024 * 1024);
+  memset(buf, '$', 70 * 1024 * 1024);
+  int64_t size = 2 * 1024 * 1024 - 8 * 1024;
+  appender.append(buf, size, false);
+  size = 8 * 1024 + 1023;
+  appender.append(buf, size, false);
+  size = 2 * 1024 * 1024 - 1;
+  appender.append(buf, size, false);
+  size = 64 * 1024 * 1024;
+  appender.append(buf, size, false);
+  appender.fsync();
+  EXPECT_EQ(68 * 1024 * 1024 + 1022, appender.get_file_pos());
+  appender.close();
+  free(buf);
+}
+
+TEST(TestObFile, sync_append_bounder)
+{
+  ObFileAppender appender;
+  ObString str_fname;
+  str_fname.assign(sync_fname, static_cast<int32_t>(strlen(sync_fname) + 1));
+  appender.open(str_fname, true, true, true);
+  char *buf = (char*)malloc(70 * 1024 * 1024);
+  memset(buf, '$', 70 * 1024 * 1024);
+  int64_t size = 2 * 1024 * 1024 - 8 * 1024;
+  appender.append(buf, size, false);
+  size = 8 * 1024 + 1023;
+  appender.append(buf, size, false);
+  size = 2 * 1024 * 1024 - 1;
+  appender.append(buf, size, false);
+  size = 64 * 1024 * 1024;
+  appender.append(buf, size, false);
+  appender.fsync();
+  EXPECT_EQ(68 * 1024 * 1024 + 1022, appender.get_file_pos());
+  appender.close();
+  free(buf);
+}
+
+class FileInfo : public IFileInfo
+{
+  public:
+    FileInfo(const char *fname) : fd_(-1)
+    {
+      fd_ = open(fname, O_RDONLY | O_DIRECT);
+    };
+    ~FileInfo()
+    {
+      if (-1 != fd_)
+      {
+        close(fd_);
+        fd_ = -1;
+      }
+    };
+  public:
+    int get_fd() const
+    {
+      return fd_;
+    };
+  private:
+    int fd_;
+};
+
+void test(const char *fname)
+{
+  char *buffer = new char[2 * 1024 * 1024];
+  int64_t timeu = tbsys::CTimeUtil::getTime();
+  //int fd = open("./test.data", O_WRONLY | O_TRUNC, S_IRWXU);
+  //fprintf(stderr, "open timeu=%ld\n", tbsys::CTimeUtil::getTime() - timeu);
+  //for (int64_t i = 0; i < 80; i++)
+  //{
+  //  write(fd, buffer, 2 * 1024 * 1024);
+  //}
+  //close(fd);
+  //fprintf(stderr, "write timeu=%ld\n", tbsys::CTimeUtil::getTime() - timeu);
+
+  FileInfo fi(fname);
+  fprintf(stderr, "open timeu=%ld\n", tbsys::CTimeUtil::getTime() - timeu);
+  ObFileBuffer fbuffer;
+  ObFileReader::read_record(fi, 2 * 1024 * 1024 - 419, 419, fbuffer);
+  fprintf(stderr, "read pos=%ld timeu=%ld\n", fbuffer.get_base_pos(), tbsys::CTimeUtil::getTime() - timeu);
+  delete[] buffer;
+  exit(0);
 }
 
 int main(int argc, char **argv)
 {
-  int tm = time(NULL);
-  //tm = 1309936090;
+  //test(argv[1]);
+  TBSYS_LOGGER.setLogLevel("debug");
+  int tm = static_cast<int32_t>(time(NULL));
   srand(tm);
   fprintf(stderr, "seed=%d\n", tm);
   ob_init_memory_pool();

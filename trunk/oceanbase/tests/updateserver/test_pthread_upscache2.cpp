@@ -1,18 +1,18 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation. 
+ *  
+ * test_pthread_upscache.cpp for stress test of ups cache 
  *
- * test_pthread_upscache2.cpp for ...
- *
- * Authors:
- *   rongxuan <rongxuan.lc@taobao.com>
+ * Authors: 
+ *   rongxuan<rongxuan.lc@taobao.com>
+ *  
  *
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -145,5 +145,3 @@ int main(int argc, char **argv)
   uc.destroy();
   return ret;
 }
-
-

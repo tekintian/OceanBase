@@ -1,5 +1,5 @@
 /**
- * (C) 2010 Taobao Inc.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
@@ -55,12 +55,11 @@ namespace oceanbase
                   file_name, file_name, file_name, file_size / (1024 * 1024));
           system(cmd);
           
-          ObBlockCacheConf conf;
-          conf.block_cache_memsize_mb = 1024;
-          conf.ficache_max_num = 1024;
+          int64_t block_cache_size = 64 * 1024 * 1024;
+          int64_t ficache_max_num = 1024;
         
-          fic.init(conf.ficache_max_num);
-          bc.init(conf);
+          fic.init(ficache_max_num);
+          bc.init(block_cache_size);
         }
       
         static void TearDownTestCase()
@@ -104,7 +103,7 @@ namespace oceanbase
             for (int64_t i = 0; i < block_count; ++i)
             {
               ret = aio_buf_mgr.get_block(bc, sstable_id, pos_infos.position_info_[i].offset_, 
-                                          block_size, timeout, buffer, from_cache);
+                                          block_size, timeout, buffer, from_cache, false);
               if (pos_infos.position_info_[i].offset_ + pos_infos.position_info_[i].size_ 
                   > file_size)
               {
@@ -126,7 +125,7 @@ namespace oceanbase
             for (int64_t i = block_count - 1; i >= 0; --i)
             {
               ret = aio_buf_mgr.get_block(bc, sstable_id, pos_infos.position_info_[i].offset_, 
-                                          block_size, timeout, buffer, from_cache);
+                                          block_size, timeout, buffer, from_cache, false);
               if (pos_infos.position_info_[block_count - 1].offset_ 
                   + pos_infos.position_info_[block_count - 1].size_ > file_size)
               {
@@ -183,7 +182,7 @@ namespace oceanbase
               {
                 ret = aio_buf_mgr.get_block(bc, sstable_id, pos_infos.position_info_[i].offset_, 
                                             pos_infos.position_info_[i].size_, timeout, buffer, 
-                                            from_cache);
+                                            from_cache, false);
                 EXPECT_EQ(OB_SUCCESS, ret);
                 EXPECT_TRUE(NULL != buffer);
               }
@@ -191,7 +190,7 @@ namespace oceanbase
               {
                 ret = aio_buf_mgr.get_block(bc, sstable_id, pos_infos.position_info_[i].offset_ + 1, 
                                             pos_infos.position_info_[i].size_, timeout, buffer, 
-                                            from_cache);
+                                            from_cache, false);
                 EXPECT_TRUE(OB_SUCCESS != ret);
               }
             }    
@@ -204,7 +203,7 @@ namespace oceanbase
               {
                 ret = aio_buf_mgr.get_block(bc, sstable_id, pos_infos.position_info_[i].offset_, 
                                             pos_infos.position_info_[i].size_, timeout, buffer,
-                                            from_cache);
+                                            from_cache, false);
                 EXPECT_EQ(OB_SUCCESS, ret);
                 EXPECT_TRUE(NULL != buffer);
               }
@@ -212,7 +211,7 @@ namespace oceanbase
               {
                 ret = aio_buf_mgr.get_block(bc, sstable_id, pos_infos.position_info_[i].offset_ + 1, 
                                             pos_infos.position_info_[i].size_, timeout, buffer,
-                                            from_cache);
+                                            from_cache, false);
                 EXPECT_TRUE(OB_SUCCESS != ret);
               }
             }

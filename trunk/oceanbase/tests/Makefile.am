@@ -1,5 +1,4 @@
-SUBDIRS=chunkserver common sstable mergeserver rootserver updateserver lsync
-DIST_SUBDIRS=chunkserver common sstable rootserver mergeserver updateserver lsync
+SUBDIRS=chunkserver common compactsstablev2 sstable mergeserver rootserver updateserver lsync sql obmysql
 utest: check
 
 .PHONY: utest

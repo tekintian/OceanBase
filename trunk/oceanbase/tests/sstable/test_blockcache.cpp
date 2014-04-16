@@ -1,5 +1,5 @@
 /**
- * (C) 2010 Taobao Inc.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
@@ -34,6 +34,9 @@ static const uint64_t sstable_id1 = 1048576;
 static const uint64_t sstable_id2 = 1000000;
 static const char* file_name1 = "./data/sst_1048576";
 static const char* file_name2 = "./data/sst_1000000";
+static const int64_t block_cache_size = 1024 * 1024 * 256;
+static const int64_t block_index_cache_size = 128 * 1024 * 1024;
+static const int64_t ficache_max_num = 1024;
 static FileInfoCache fic; 
 
 class TestBlockCache : public ::testing::Test
@@ -80,38 +83,26 @@ public:
 TEST_F(TestBlockCache, init)
 {
   ObBlockCache bc(fic);
-  ObBlockCacheConf conf;
-  conf.block_cache_memsize_mb = 10;
-  conf.ficache_max_num = 1024;
-  ObBlockCacheConf tmp_conf;
 
-  tmp_conf = conf;
-  tmp_conf.block_cache_memsize_mb = 0;
-  EXPECT_EQ(OB_ERROR, bc.init(tmp_conf));
+  EXPECT_EQ(OB_ERROR, bc.init(block_cache_size));
   
-  EXPECT_EQ(OB_SUCCESS, bc.init(conf));
-  EXPECT_EQ(OB_SUCCESS, bc.init(conf));
   bc.destroy();
 }
 
 TEST_F(TestBlockCache, clear)
 {
   ObBlockCache bc(fic);
-  ObBlockCacheConf conf;
-  conf.block_cache_memsize_mb = 10;
-  conf.ficache_max_num = 1024;
 
   EXPECT_EQ(OB_ERROR, bc.clear());
-  bc.init(conf);
+  bc.init(block_cache_size);
   EXPECT_EQ(OB_SUCCESS, bc.clear());
 
-  bc.init(conf);
   uint64_t sstable_ids[2] = {1048576, 1000000};
   int64_t offset = 0;
   int64_t nbyte = 2048;
   ObBufferHandle *buffer_handle = new ObBufferHandle();;
   EXPECT_EQ(nbyte, bc.get_block(sstable_ids[0], offset, nbyte, 
-                                *buffer_handle, talbe_id));
+                                *buffer_handle, talbe_id, false));
   EXPECT_EQ(OB_ERROR, bc.clear());
   delete buffer_handle;
   EXPECT_EQ(OB_SUCCESS, bc.clear());
@@ -121,9 +112,6 @@ TEST_F(TestBlockCache, clear)
 TEST_F(TestBlockCache, get_block)
 {
   ObBlockCache bc(fic);
-  ObBlockCacheConf conf;
-  conf.block_cache_memsize_mb = 10;
-  conf.ficache_max_num = 1024;
 
   uint64_t sstable_ids[2] = {1048576, 1000000};
   int64_t offset = 0;
@@ -132,11 +120,11 @@ TEST_F(TestBlockCache, get_block)
   ObBufferHandle *buffer_handle = new ObBufferHandle();;
   ObBufferHandle tmp;
   EXPECT_EQ(-1, bc.get_block(sstable_ids[0], offset, nbyte,
-                             *buffer_handle, talbe_id));
+                             *buffer_handle, talbe_id, false));
 
-  EXPECT_EQ(OB_SUCCESS, bc.init(conf));
+  EXPECT_EQ(OB_SUCCESS, bc.init(block_cache_size));
   EXPECT_EQ(nbyte, bc.get_block(sstable_ids[0], offset, nbyte, 
-                                *buffer_handle, talbe_id));
+                                *buffer_handle, talbe_id, false));
   FILE *fd = fopen("./data/sst_1048576", "r");
   fread(buffer, 1, nbyte, fd);
   fclose(fd);
@@ -144,12 +132,12 @@ TEST_F(TestBlockCache, get_block)
   
   *buffer_handle = tmp;
   EXPECT_EQ(nbyte, bc.get_block(sstable_ids[0], offset, nbyte, 
-                                *buffer_handle, talbe_id));
+                                *buffer_handle, talbe_id, false));
   EXPECT_EQ(0, memcmp(buffer, buffer_handle->get_buffer(), nbyte));
 
   *buffer_handle = tmp;
   EXPECT_EQ(nbyte, bc.get_block(sstable_ids[1], offset, nbyte, 
-                                *buffer_handle, talbe_id));
+                                *buffer_handle, talbe_id, false));
   fd = fopen("./data/sst_1000000", "r");
   fread(buffer, 1, nbyte, fd);
   fclose(fd);
@@ -157,7 +145,7 @@ TEST_F(TestBlockCache, get_block)
   
   *buffer_handle = tmp;
   EXPECT_EQ(nbyte, bc.get_block(sstable_ids[0], offset, nbyte, 
-                                *buffer_handle, talbe_id));
+                                *buffer_handle, talbe_id, false));
   fd = fopen("./data/sst_1048576", "r");
   fread(buffer, 1, nbyte, fd);
   fclose(fd);
@@ -171,9 +159,6 @@ TEST_F(TestBlockCache, get_block)
 TEST_F(TestBlockCache, test_get_block_aio)
 {
   ObBlockCache bc(fic);
-  ObBlockCacheConf conf;
-  conf.block_cache_memsize_mb = 10;
-  conf.ficache_max_num = 1024;
 
   uint64_t sstable_ids[2] = {1048576, 1000000};
   int64_t offset = 0;
@@ -183,11 +168,11 @@ TEST_F(TestBlockCache, test_get_block_aio)
   ObBufferHandle *buffer_handle = new ObBufferHandle();
   ObBufferHandle tmp;
   EXPECT_EQ(-1, bc.get_block_aio(sstable_ids[0], offset, nbyte, 
-                                 *buffer_handle, timeo_us, talbe_id, 0));
+                                 *buffer_handle, timeo_us, talbe_id, 0, false));
 
-  bc.init(conf);
+  bc.init(block_cache_size);
   EXPECT_EQ(-1, bc.get_block_aio(sstable_ids[0], offset, nbyte, 
-                                 *buffer_handle, timeo_us, talbe_id, 0));
+                                 *buffer_handle, timeo_us, talbe_id, 0, false));
 
   ObBlockPositionInfos pos_infos;
   int64_t block_size = nbyte;
@@ -200,7 +185,7 @@ TEST_F(TestBlockCache, test_get_block_aio)
 
   EXPECT_EQ(OB_SUCCESS, bc.advise(sstable_ids[0], pos_infos, talbe_id, 0, false));
   EXPECT_EQ(nbyte, bc.get_block_aio(sstable_ids[0], offset, nbyte, 
-                                    *buffer_handle, timeo_us, talbe_id, 0));
+                                    *buffer_handle, timeo_us, talbe_id, 0, false));
   FILE *fd = fopen("./data/sst_1048576", "r");
   fread(buffer, 1, nbyte, fd);
   fclose(fd);
@@ -209,13 +194,13 @@ TEST_F(TestBlockCache, test_get_block_aio)
   *buffer_handle = tmp;
   EXPECT_EQ(OB_SUCCESS, bc.advise(sstable_ids[0], pos_infos, talbe_id, 0, false));
   EXPECT_EQ(nbyte, bc.get_block_aio(sstable_ids[0], offset, nbyte, 
-                                    *buffer_handle, timeo_us, talbe_id, 0));
+                                    *buffer_handle, timeo_us, talbe_id, 0, false));
   EXPECT_EQ(0, memcmp(buffer, buffer_handle->get_buffer(), nbyte));
 
   *buffer_handle = tmp;
   EXPECT_EQ(OB_SUCCESS, bc.advise(sstable_ids[1], pos_infos, talbe_id, 0, false));
   EXPECT_EQ(nbyte, bc.get_block_aio(sstable_ids[1], offset, nbyte, 
-                                    *buffer_handle, timeo_us, talbe_id, 0));
+                                    *buffer_handle, timeo_us, talbe_id, 0, false));
   fd = fopen("./data/sst_1000000", "r");
   fread(buffer, 1, nbyte, fd);
   fclose(fd);
@@ -223,12 +208,12 @@ TEST_F(TestBlockCache, test_get_block_aio)
 
   EXPECT_EQ(OB_SUCCESS, bc.advise(sstable_ids[0], pos_infos, talbe_id, 0, false));
   EXPECT_EQ(-1, bc.get_block_aio(sstable_ids[0], offset, nbyte, 
-                                 *buffer_handle, 0, talbe_id, 0));
+                                 *buffer_handle, 0, talbe_id, 0, false));
   
   *buffer_handle = tmp;
   EXPECT_EQ(OB_SUCCESS, bc.advise(sstable_ids[0], pos_infos, talbe_id, 0, true));
   EXPECT_EQ(nbyte, bc.get_block_aio(sstable_ids[0], offset, nbyte, 
-                                *buffer_handle, timeo_us, talbe_id, 0));
+                                *buffer_handle, timeo_us, talbe_id, 0, false));
   fd = fopen("./data/sst_1048576", "r");
   fread(buffer, 1, nbyte, fd);
   fclose(fd);
@@ -237,7 +222,7 @@ TEST_F(TestBlockCache, test_get_block_aio)
   *buffer_handle = tmp;
   EXPECT_EQ(OB_SUCCESS, bc.advise(sstable_ids[0], pos_infos, talbe_id, 0, true));
   EXPECT_EQ(nbyte, bc.get_block_aio(sstable_ids[0], offset, nbyte,
-                                *buffer_handle, timeo_us, talbe_id, 0));
+                                *buffer_handle, timeo_us, talbe_id, 0, false));
 
   delete buffer_handle;
   delete buffer;
@@ -247,22 +232,19 @@ TEST_F(TestBlockCache, test_get_block_aio)
 TEST_F(TestBlockCache, destroy)
 {
   ObBlockCache bc(fic);
-  ObBlockCacheConf conf;
-  conf.block_cache_memsize_mb = 10;
-  conf.ficache_max_num = 1024;
 
   EXPECT_EQ(OB_SUCCESS, bc.destroy());
-  bc.init(conf);
+  bc.init(block_cache_size);
   EXPECT_EQ(OB_SUCCESS, bc.destroy());
 
   bc.set_fileinfo_cache(fic);
-  bc.init(conf);
+  bc.init(block_cache_size);
   uint64_t sstable_ids[2] = {1048576, 1000000};
   int64_t offset = 0;
   int64_t nbyte = 2048;
   ObBufferHandle *buffer_handle = new ObBufferHandle();;
   EXPECT_EQ(nbyte, bc.get_block(sstable_ids[0], offset, nbyte, 
-                                *buffer_handle, talbe_id));
+                                *buffer_handle, talbe_id, false));
   EXPECT_EQ(OB_ERROR, bc.destroy());
   delete buffer_handle;
   EXPECT_EQ(OB_SUCCESS, bc.destroy());

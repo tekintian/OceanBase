@@ -15,7 +15,7 @@ LDADD = \
 		${TBLIB_ROOT}/lib/libtbnet.a \
 		${TBLIB_ROOT}/lib/libtbsys.a
 
-AM_LDFLAGS=-lnuma -lpthread -lc -lm -lrt ${GCOV_LIB} -ldl -laio
+AM_LDFLAGS=-lpthread -lc -lm -lrt ${GCOV_LIB} -ldl -laio
 CXXFLAGS=-D__STDC_LIMIT_MACROS -g -Wall -D__UNIT_TEST__ -D_BTREE_ENGINE_
 if COVERAGE
 CXXFLAGS+=-fprofile-arcs -ftest-coverage
