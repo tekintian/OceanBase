@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * chunk_servers_manager_test.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
 #include <gtest/gtest.h>
 #include "rootserver/ob_chunk_server_manager.h"
 #include <tbsys.h>
@@ -43,7 +28,6 @@ TEST(ObChunkServerManagerTest, find)
   ObChunkServerManager::iterator it = chunk_m.find_by_ip(server);
 
   ASSERT_TRUE(it != chunk_m.end());
-  server.set_port(0);
   ASSERT_TRUE(server == it->server_);
   ASSERT_EQ(11, it->last_hb_time_);
 
@@ -94,4 +78,3 @@ int main(int argc, char **argv)
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
-

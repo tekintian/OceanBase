@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * mock_root_server2.cpp for ...
- *
- * Authors:
- *   rizhao <rizhao.ych@taobao.com>
- *
- */
 #include "common/ob_result.h"
 #include "common/ob_scanner.h"
 #include "common/ob_read_common_data.h"
@@ -431,5 +416,3 @@ int main(int argc, char ** argv)
   return 0;
 }
 */
-
-

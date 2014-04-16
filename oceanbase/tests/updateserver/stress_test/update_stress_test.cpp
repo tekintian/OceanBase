@@ -1,18 +1,20 @@
-/**
- * (C) 2007-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * update_stress_test.cpp for ...
+ *
+ *
+ * Version: 0.1: update_stress_test.cpp,v 0.1 2010/11/16 14:32:03 chuanhui Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - some work details if you want
  *
  */
+
 #include <pthread.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -1221,7 +1223,6 @@ int main(int argc, char** argv)
   g_update_client.destroy();
   return 0;
 }
-
 
 
 

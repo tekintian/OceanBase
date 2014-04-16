@@ -33,13 +33,15 @@ class TestSimpleFilter:public ::testing::Test
     }
 };
 
-
 TEST_F(TestSimpleFilter, test_add_cond)
 {
+  ObStringBuf buf;
   ObLogicOperator operate = LIKE;
   char * ptr = "test_test";
+  ObString str;
   ObString sub_string;
-  sub_string.assign(ptr, strlen(ptr));
+  str.assign(ptr, strlen(ptr));
+  buf.write_string(str,&sub_string);
   ObObj operand;
   operand.set_varchar(sub_string);
   
@@ -60,7 +62,7 @@ TEST_F(TestSimpleFilter, test_add_cond)
   EXPECT_TRUE(filter.add_cond(1, operate, operand) == OB_SUCCESS);
   ++count; 
   // add some much string
-  for (int64_t i = 3; i < 1024 * 1024L; ++i)
+  for (int64_t i = 3; i < 128; ++i)
   {
     operate = NE;
     operand.set_varchar(sub_string);
@@ -73,13 +75,14 @@ TEST_F(TestSimpleFilter, test_add_cond)
     EXPECT_TRUE(cond->get_right_operand() == operand);
   }
   
-  char name[1024] = "";
+  char name[128] = "";
   ObString column_name;
   int64_t old_count = count;
-  for (int64_t i = count; i < 1024; ++i)
+  for (int64_t i = count; i < 128; ++i)
   {
     snprintf(name, sizeof(name), "column_%ld", i);
-    column_name.assign(name, strlen(name));
+    str.assign(name, strlen(name));
+    buf.write_string(str,&column_name);
 
     operand.set_varchar(sub_string);
     EXPECT_TRUE(filter.add_cond(column_name, operate, operand) == OB_SUCCESS);
@@ -90,7 +93,8 @@ TEST_F(TestSimpleFilter, test_add_cond)
   {
     cond = filter[i];
     snprintf(name, sizeof(name), "column_%ld", i);
-    column_name.assign(name, strlen(name));
+    str.assign(name, strlen(name));
+    buf.write_string(str,&column_name);
     EXPECT_TRUE(cond != NULL);
     EXPECT_TRUE(cond->get_column_name() == column_name);
     EXPECT_TRUE(cond->get_column_index() == ObSimpleCond::INVALID_INDEX);
@@ -99,19 +103,21 @@ TEST_F(TestSimpleFilter, test_add_cond)
   }
 
   filter.reset();
-  for (int64_t i = 0; i < 1024; ++i)
+  for (int64_t i = 0; i < 128; ++i)
   {
     snprintf(name, sizeof(name), "column_%ld", i);
-    column_name.assign(name, strlen(name));
+    str.assign(name, strlen(name));
+    buf.write_string(str,&column_name);
     operand.set_varchar(sub_string);
     EXPECT_TRUE(filter.add_cond(column_name, operate, operand) == OB_SUCCESS);
   }
   
-  for (int64_t i = 0; i < 1024; ++i)
+  for (int64_t i = 0; i < 128; ++i)
   {
     cond = filter[i];
     snprintf(name, sizeof(name), "column_%ld", i);
-    column_name.assign(name, strlen(name));
+    str.assign(name, strlen(name));
+    buf.write_string(str,&column_name);
     EXPECT_TRUE(cond != NULL);
     EXPECT_TRUE(cond->get_column_name() == column_name);
     EXPECT_TRUE(cond->get_column_index() == ObSimpleCond::INVALID_INDEX);
@@ -344,7 +350,7 @@ TEST_F(TestSimpleFilter, test_serialize)
   EXPECT_TRUE(filter.add_cond(3, operate, operand) == OB_SUCCESS);
  
   ObString column_name;
-  char name[1024] = "";
+  char name[128] = "";
   for (int64_t i = 0; i < 1; ++i)
   {
     snprintf(name, sizeof(name), "column_name_%ld", i);
@@ -364,7 +370,7 @@ TEST_F(TestSimpleFilter, test_serialize)
   EXPECT_TRUE(filter1 == filter);
   
   // add some much string
-  for (int64_t i = 10; i < 1024 * 1024L; ++i)
+  for (int64_t i = 10; i < 128; ++i)
   //for (int64_t i = 0; i < 1; ++i)
   {
     operate = NE;

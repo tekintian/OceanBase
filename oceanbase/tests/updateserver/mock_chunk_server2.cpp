@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * mock_chunk_server2.cpp for ...
- *
- * Authors:
- *   rizhao <rizhao.ych@taobao.com>
- *
- */
 #include "mock_chunk_server2.h"
 #include "mock_define.h"
 #include "common/ob_result.h"
@@ -375,8 +360,6 @@ int MockChunkServer::handle_get_table(ObPacket * ob_packet)
   TBSYS_LOG(INFO, "==handle get  table result:ret[%d]", ret);
   return ret;
 }
-
-
 
 
 

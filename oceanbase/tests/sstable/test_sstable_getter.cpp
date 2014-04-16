@@ -1,5 +1,5 @@
 /**
- * (C) 2010 Taobao Inc.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include "common/ob_action_flag.h"
 #include "common/thread_buffer.h"
+#include "common/page_arena.h"
 #include "sstable/ob_sstable_reader.h"
 #include "sstable/ob_sstable_writer.h"
 #include "sstable/ob_sstable_getter.h"
@@ -41,17 +42,20 @@ namespace oceanbase
       static const int64_t ROW_NUM = SSTABLE_NUM * SSTABLE_ROW_NUM;
       static const int64_t COL_NUM = 5;
       static const int64_t NON_EXISTENT_ROW_NUM = 100;
-      static const ObString table_name(strlen("sstable") + 1, strlen("sstable") + 1, "sstable");
+      static const ObString table_name(strlen("sstable") + 1, strlen("sstable") + 1, (char*)"sstable");
       static const int64_t OB_MAX_GET_COLUMN_NUMBER = 128;
+      static const int64_t OB_MAX_GET_COLUMN_PER_ROW = 512;
 
       static char sstable_file_path[OB_MAX_FILE_NAME_LENGTH];
       static ObCellInfo** cell_infos;
+      static ObObj** rowkey_objs;
       static char* row_key_strs[ROW_NUM + NON_EXISTENT_ROW_NUM][COL_NUM];
-      static ObTabletManager tablet_mgr;
+      static ObTabletManager* tablet_mgr;
 
       static ModulePageAllocator mod(0);
       static ModuleArena allocator(ModuleArena::DEFAULT_PAGE_SIZE, mod);
-      static ObSSTableReader sstable(allocator, tablet_mgr.get_fileinfo_cache());
+      static FileInfoCache fileinfo_cache;
+      static ObSSTableReader sstable(allocator, fileinfo_cache);
 
       class TestObSSTableGetter : public ::testing::Test
       {
@@ -99,7 +103,7 @@ namespace oceanbase
             ASSERT_EQ(column_id, real.column_id_);
           }
           ASSERT_EQ(expected.table_id_, real.table_id_);
-          check_string(expected.row_key_, real.row_key_);
+          ASSERT_TRUE(expected.row_key_ == real.row_key_);
 
           if (ObIntType == type)
           {
@@ -112,10 +116,10 @@ namespace oceanbase
         {
           int ret = OB_SUCCESS;
 
-          static common::ModulePageAllocator mod_allocator(ObModIds::OB_THREAD_BUFFER);
+          static ModulePageAllocator mod_allocator(ObModIds::OB_THREAD_BUFFER);
           static const int64_t QUERY_INTERNAL_PAGE_SIZE = 2 * 1024 * 1024;
 
-          common::ModuleArena* internal_buffer_arena = GET_TSI(common::ModuleArena);
+          ModuleArena* internal_buffer_arena = GET_TSI_MULT(ModuleArena, TSI_SSTABLE_MODULE_ARENA_1);
           if (NULL == internal_buffer_arena)
           {
             TBSYS_LOG(ERROR, "cannot get tsi object of PageArena");
@@ -133,51 +137,115 @@ namespace oceanbase
         
         void test_adjacent_row_query(const int32_t row_index = 0, 
                                      const int32_t row_count = 1,
-                                     const int32_t column_count = COL_NUM)
+                                     const int32_t column_count = COL_NUM,
+                                     bool same_row = false)
         {
           int ret = OB_SUCCESS;
           ObSSTableGetter getter;
           ObGetParam get_param;
           ObSSTableReader* readers[OB_MAX_GET_COLUMN_NUMBER];
-          int64_t readers_size = row_count;
+          int64_t readers_size = same_row ? 1 : row_count;
           ObCellInfo *cell = NULL;
           bool row_change = false;
+          int index = 0;
 
           for (int i = row_index; i < row_index + row_count; i++)
           {
+            index = same_row ? row_index : i;
             for (int j = 0; j < column_count; j++)
             {
-              ret = get_param.add_cell(cell_infos[i][j]);
+              ret = get_param.add_cell(cell_infos[index][j]);
               EXPECT_EQ(OB_SUCCESS, ret);
             }
-            readers[i - row_index] = &sstable;
+            readers[index - row_index] = &sstable;
           }
 
           ret = reset_thread_local_buffer();
           ASSERT_EQ(OB_SUCCESS, ret);
 
-          ret = getter.init(tablet_mgr.get_serving_block_cache(), 
-                            tablet_mgr.get_serving_block_index_cache(), 
+          ret = getter.init(tablet_mgr->get_serving_block_cache(), 
+                            tablet_mgr->get_serving_block_index_cache(), 
                             get_param, readers, readers_size);
-          ASSERT_EQ(OB_SUCCESS, ret);
-
-          for (int i = row_index; i < row_index + row_count; i++)
+          if (same_row && row_count * 3 > OB_MAX_GET_COLUMN_PER_ROW)
           {
-            for (int j = 0; j < column_count; j++)
+            if (row_count * 2 > OB_MAX_GET_COLUMN_PER_ROW)
             {
-              ret = getter.next_cell();
-              EXPECT_EQ(OB_SUCCESS, ret);
-              ret = getter.get_cell(&cell, &row_change);
-              EXPECT_EQ(OB_SUCCESS, ret);
-              EXPECT_NE((ObCellInfo*)NULL, cell);
-              check_cell(cell_infos[i][j], *cell);
-              if (0 == (i * column_count + j) % column_count)
+              ASSERT_EQ(OB_SIZE_OVERFLOW, ret);
+            }
+            else 
+            {
+              ASSERT_EQ(OB_SUCCESS, ret);
+            }
+            return;
+          }
+          else
+          {
+            ASSERT_EQ(OB_SUCCESS, ret);
+          }
+
+          if (same_row)
+          {
+            for (int i = row_index; i < row_index + row_count && column_count >= 2; i++)
+            {
+              for (int j = 0; j < 2; j++)
               {
-                EXPECT_TRUE(row_change);
+                ret = getter.next_cell();
+                EXPECT_EQ(OB_SUCCESS, ret);
+                ret = getter.get_cell(&cell, &row_change);
+                EXPECT_EQ(OB_SUCCESS, ret);
+                EXPECT_NE((ObCellInfo*)NULL, cell);
+                check_cell(cell_infos[row_index][j], *cell);
+                if (row_index == i && 0 == j)
+                {
+                  EXPECT_TRUE(row_change);
+                }
+                else
+                {
+                  EXPECT_TRUE(!row_change);
+                }
               }
-              else
+            }
+            for (int i = row_index; i < row_index + row_count && column_count > 2; i++)
+            {
+              for (int j = 2; j < column_count; j++)
               {
-                EXPECT_TRUE(!row_change);
+                ret = getter.next_cell();
+                EXPECT_EQ(OB_SUCCESS, ret);
+                ret = getter.get_cell(&cell, &row_change);
+                EXPECT_EQ(OB_SUCCESS, ret);
+                EXPECT_NE((ObCellInfo*)NULL, cell);
+                check_cell(cell_infos[row_index][j], *cell);
+                if (row_index == i && 0 == j)
+                {
+                  EXPECT_TRUE(row_change);
+                }
+                else
+                {
+                  EXPECT_TRUE(!row_change);
+                }
+              }
+            }
+          }
+          else
+          {
+            for (int i = row_index; i < row_index + row_count; i++)
+            {
+              for (int j = 0; j < column_count; j++)
+              {
+                ret = getter.next_cell();
+                EXPECT_EQ(OB_SUCCESS, ret);
+                ret = getter.get_cell(&cell, &row_change);
+                EXPECT_EQ(OB_SUCCESS, ret);
+                EXPECT_NE((ObCellInfo*)NULL, cell);
+                check_cell(cell_infos[i][j], *cell);
+                if (0 == (i * column_count + j) % column_count)
+                {
+                  EXPECT_TRUE(row_change);
+                }
+                else
+                {
+                  EXPECT_TRUE(!row_change);
+                }
               }
             }
           }
@@ -212,22 +280,33 @@ namespace oceanbase
           ret = reset_thread_local_buffer();
           ASSERT_EQ(OB_SUCCESS, ret);
 
-          ret = getter.init(tablet_mgr.get_serving_block_cache(), 
-                            tablet_mgr.get_serving_block_index_cache(), 
+          ret = getter.init(tablet_mgr->get_serving_block_cache(), 
+                            tablet_mgr->get_serving_block_index_cache(), 
                             get_param, readers, readers_size);
           ASSERT_EQ(OB_SUCCESS, ret);
 
+          int64_t col_num = COL_NUM + 1;
           for (int i = row_index; i < row_index + row_count; i++)
           {
-            for (int j = 0; j < COL_NUM; j++)
+            for (int j = 0; j < col_num; j++)
             {
               ret = getter.next_cell();
               EXPECT_EQ(OB_SUCCESS, ret);
               ret = getter.get_cell(&cell, &row_change);
               EXPECT_EQ(OB_SUCCESS, ret);
               EXPECT_NE((ObCellInfo*)NULL, cell);
-              check_cell(cell_infos[i][j], *cell);
-              if (0 == (i * COL_NUM + j) % COL_NUM)
+              if (j == 0)
+              {
+                // rowkey column 
+                EXPECT_EQ((uint64_t)1, cell->column_id_);
+              }
+              else
+              {
+                //fprintf(stderr, "cell_infos[%d][%d]=%s, cell=%s\n",
+                 //   i, j, print_cellinfo(&cell_infos[i][j]), print_cellinfo(cell));
+                check_cell(cell_infos[i][j-1], *cell);
+              }
+              if (0 == (i * col_num + j) % col_num)
               {
                 EXPECT_TRUE(row_change);
               }
@@ -285,8 +364,8 @@ namespace oceanbase
           ret = reset_thread_local_buffer();
           ASSERT_EQ(OB_SUCCESS, ret);
 
-          ret = getter.init(tablet_mgr.get_serving_block_cache(), 
-                            tablet_mgr.get_serving_block_index_cache(), 
+          ret = getter.init(tablet_mgr->get_serving_block_cache(), 
+                            tablet_mgr->get_serving_block_index_cache(), 
                             get_param, readers, readers_size);
           ASSERT_EQ(OB_SUCCESS, ret);
 
@@ -373,8 +452,8 @@ namespace oceanbase
           ret = reset_thread_local_buffer();
           ASSERT_EQ(OB_SUCCESS, ret);
 
-          ret = getter.init(tablet_mgr.get_serving_block_cache(), 
-                            tablet_mgr.get_serving_block_index_cache(), 
+          ret = getter.init(tablet_mgr->get_serving_block_cache(), 
+                            tablet_mgr->get_serving_block_index_cache(), 
                             get_param, readers, readers_size);
           ASSERT_EQ(OB_SUCCESS, ret);
 
@@ -456,8 +535,8 @@ namespace oceanbase
           ret = reset_thread_local_buffer();
           ASSERT_EQ(OB_SUCCESS, ret);
 
-          ret = getter.init(tablet_mgr.get_serving_block_cache(), 
-                            tablet_mgr.get_serving_block_index_cache(), 
+          ret = getter.init(tablet_mgr->get_serving_block_cache(), 
+                            tablet_mgr->get_serving_block_index_cache(), 
                             get_param, readers, readers_size);
           ASSERT_EQ(OB_SUCCESS, ret);
 
@@ -507,14 +586,15 @@ namespace oceanbase
         {
           int err = OB_SUCCESS;
   
-          ObBlockCacheConf conf;
-          conf.block_cache_memsize_mb = 1024;
-          conf.ficache_max_num = 1024;
   
-          ObBlockIndexCacheConf bic_conf;
-          bic_conf.cache_mem_size = 128 * 1024 * 1024;
-  
-          err = tablet_mgr.init(conf, bic_conf, 100);
+          const int64_t block_cache_size = 1024 * 1024 * 256;
+          const int64_t block_index_cache_size = 128 * 1024 * 1024;
+          const int64_t ficache_max_num = 1024;
+          const int64_t sstable_row_cache_size = 128 * 1024 * 1024;;
+          fileinfo_cache.init(ficache_max_num);
+          tablet_mgr = new ObTabletManager();
+          err = tablet_mgr->init(block_cache_size, block_index_cache_size, sstable_row_cache_size, 
+              ficache_max_num, "/data/", 128 * 1024 * 1024);
           EXPECT_EQ(OB_SUCCESS, err);
   
           return err;
@@ -539,9 +619,19 @@ namespace oceanbase
           char* path_str = sstable_file_path;
           int64_t path_len = OB_MAX_FILE_NAME_LENGTH;
 
+          // add rowkey column
+          column_def.reserved_ = 0;
+          column_def.rowkey_seq_ = 1;
+          column_def.column_group_id_= 0;
+          column_def.column_name_id_ = 1;
+          column_def.column_value_type_ = ObVarcharType;
+          column_def.table_id_ = static_cast<uint32_t>(table_id);
+          sstable_schema.add_column_def(column_def);
+
           for (int64_t i = 0; i < col_num; ++i)
           {
             column_def.reserved_ = 0;
+            column_def.rowkey_seq_ = 0;
             if (i >=2)
             {
               column_def.column_group_id_= 2;
@@ -550,9 +640,9 @@ namespace oceanbase
             {
               column_def.column_group_id_= 0;
             }
-            column_def.column_name_id_ = cell_infos[0][i].column_id_;
+            column_def.column_name_id_ = static_cast<uint16_t>(cell_infos[0][i].column_id_);
             column_def.column_value_type_ = cell_infos[0][i].value_.get_type();
-            column_def.table_id_ = table_id;
+            column_def.table_id_ = static_cast<uint32_t>(table_id);
             sstable_schema.add_column_def(column_def);
           }
   
@@ -570,8 +660,8 @@ namespace oceanbase
           char cmd[256];
           sprintf(cmd, "mkdir -p %s", path_str);
           system(cmd);
-          path.assign((char*)path_str, strlen(path_str));
-          compress_name.assign("lzo_1.0", strlen("lzo_1.0"));
+          path.assign((char*)path_str, static_cast<int32_t>(strlen(path_str)));
+          compress_name.assign((char*)"lzo_1.0", static_cast<int32_t>(strlen("lzo_1.0")));
           remove(path.ptr());
 
           ObSSTableWriter writer;
@@ -583,7 +673,7 @@ namespace oceanbase
             ObSSTableRow row;
             row.set_table_id(table_id);
             row.set_column_group_id(0);
-            err = row.set_row_key(cell_infos[i][0].row_key_);
+            err = row.set_rowkey(cell_infos[i][0].row_key_);
             EXPECT_EQ(OB_SUCCESS, err);
             for (int64_t j = 0; j < 2; ++j)
             {
@@ -601,7 +691,7 @@ namespace oceanbase
             ObSSTableRow row;
             row.set_table_id(table_id);
             row.set_column_group_id(2);
-            err = row.set_row_key(cell_infos[i][0].row_key_);
+            err = row.set_rowkey(cell_infos[i][0].row_key_);
             EXPECT_EQ(OB_SUCCESS, err);
             for (int64_t j = 2; j < col_num; ++j)
             {
@@ -618,7 +708,7 @@ namespace oceanbase
           err = writer.close_sstable(offset);
           EXPECT_EQ(OB_SUCCESS, err);
   
-          err = sstable.open(sstable_id);
+          err = sstable.open(sstable_id, 0);
           EXPECT_EQ(OB_SUCCESS, err);
           EXPECT_TRUE(sstable.is_opened());
   
@@ -630,7 +720,7 @@ namespace oceanbase
         {
           int err = OB_SUCCESS;
 
-          TBSYS_LOGGER.setLogLevel("WARN");
+          TBSYS_LOGGER.setLogLevel("INFO");
           err = ob_init_memory_pool();
           ASSERT_EQ(OB_SUCCESS, err);
           err = init_mgr();
@@ -650,7 +740,14 @@ namespace oceanbase
               row_key_strs[i][j] = new char[50];
             }
           }
+
+          rowkey_objs = new ObObj*[ROW_NUM + NON_EXISTENT_ROW_NUM];
+          for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
+          {
+            rowkey_objs[i] = new ObObj[COL_NUM];
+          }
       
+          ObString rowkey_val;
           // init cell infos
           for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
           {
@@ -658,7 +755,9 @@ namespace oceanbase
             {
               cell_infos[i][j].table_id_ = table_id;
               sprintf(row_key_strs[i][j], "row_key_%08ld", i);
-              cell_infos[i][j].row_key_.assign(row_key_strs[i][j], strlen(row_key_strs[i][j]));
+              rowkey_val.assign(row_key_strs[i][j], static_cast<int32_t>(strlen(row_key_strs[i][j])));
+              rowkey_objs[i][j].set_varchar(rowkey_val);
+              cell_infos[i][j].row_key_.assign(&rowkey_objs[i][j], 1);
               cell_infos[i][j].column_id_ = j + 2;
               cell_infos[i][j].value_.set_int(1000 + i * COL_NUM + j);
             }
@@ -697,6 +796,7 @@ namespace oceanbase
             delete[] cell_infos;
           }
 
+          delete tablet_mgr;
           sstable.reset();
         }
       
@@ -903,7 +1003,7 @@ namespace oceanbase
 
       TEST_F(TestObSSTableGetter, test_get_all_nonexistent_columns)
       {
-        int64_t row_count = 20;
+        int32_t row_count = 20;
 
         for (int i = 0; i < ROW_NUM / row_count; i++)
         {
@@ -913,7 +1013,7 @@ namespace oceanbase
       
       TEST_F(TestObSSTableGetter, test_get_all_columns)
       {
-        int64_t row_count = 20;
+        int32_t row_count = 20;
 
         for (int i = 0; i < ROW_NUM / row_count; i++)
         {
@@ -923,7 +1023,7 @@ namespace oceanbase
 
       TEST_F(TestObSSTableGetter, test_get_all_columns_with_full_row_mark)
       {
-        int64_t row_count = 20;
+        int32_t row_count = 20;
 
         for (int i = 0; i < ROW_NUM / row_count; i++)
         {
@@ -933,7 +1033,7 @@ namespace oceanbase
 
       TEST_F(TestObSSTableGetter, test_get_all_columns_with_nonexistent_rows)
       {
-        int64_t row_count = 10;
+        int32_t row_count = 10;
 
         for (int i = 0; i < ROW_NUM / row_count; i++)
         {
@@ -943,12 +1043,105 @@ namespace oceanbase
 
       TEST_F(TestObSSTableGetter, test_get_all_columns_with_nonexistent_full_rows)
       {
-        int64_t row_count = 10;
+        int32_t row_count = 10;
 
         for (int i = 0; i < ROW_NUM / row_count; i++)
         {
           test_nonexistent_full_row_query(row_count * i, row_count, COL_NUM, ROW_NUM, 10);
         }
+      }
+
+      TEST_F(TestObSSTableGetter, DISABLED_test_get_same_row_xtimes)
+      {
+        int32_t max_row = OB_MAX_GET_COLUMN_PER_ROW / 2 + 10;
+
+        for (int i = 0; i < max_row; i++)
+        {
+          test_adjacent_row_query(0, i + 1, COL_NUM, true);
+        }
+      }
+
+      TEST_F(TestObSSTableGetter, test_cache_row)
+      {
+          int ret = OB_SUCCESS;
+          ObSSTableGetter getter;
+          ObGetParam get_param;
+          ObSSTableReader* readers[OB_MAX_GET_COLUMN_NUMBER];
+          int64_t readers_size = 2;
+          ObCellInfo *cell = NULL;
+          bool row_change = false;
+
+          readers[0] = &sstable;
+          readers[1] = &sstable;
+
+          int64_t row_index = 10;
+          int64_t col_index = 1;
+
+          for (int i = 0; i < 513; ++i)
+            ret = get_param.add_cell(cell_infos[row_index][col_index]);
+          //ret = get_param.add_cell(cell_infos[row_index+1][col_index+1]);
+          EXPECT_EQ(OB_SUCCESS, ret);
+
+          ret = reset_thread_local_buffer();
+          ASSERT_EQ(OB_SUCCESS, ret);
+
+          //fprintf(stderr, "%ld\n", tablet_mgr.get_row_cache()->get_cache_mem_size());
+          ret = getter.init(tablet_mgr->get_serving_block_cache(), 
+                            tablet_mgr->get_serving_block_index_cache(), 
+                            get_param, readers, readers_size, false, tablet_mgr->get_row_cache());
+          ASSERT_EQ(OB_SUCCESS, ret);
+          int64_t cnt = 0;
+          while (OB_SUCCESS == getter.next_cell())
+          {
+            ret = getter.get_cell(&cell, &row_change);
+            if (row_change)
+            {
+              fprintf(stderr, "row_change=%d, cnt=%ld\n", row_change, cnt);
+            }
+            ++cnt;
+          }
+          fprintf(stderr, "cnt=%ld\n", cnt);
+
+          /*
+          ret = getter.next_cell();
+          EXPECT_EQ(OB_SUCCESS, ret);
+          ret = getter.get_cell(&cell, &row_change);
+          EXPECT_EQ(OB_SUCCESS, ret);
+          EXPECT_NE((ObCellInfo*)NULL, cell);
+          //fprintf(stderr, "cell=%s\n", oceanbase::common::print_cellinfo(cell));
+          check_cell(cell_infos[row_index][col_index], *cell);
+
+          ret = getter.next_cell();
+          EXPECT_EQ(OB_SUCCESS, ret);
+          ret = getter.get_cell(&cell, &row_change);
+          EXPECT_EQ(OB_SUCCESS, ret);
+          EXPECT_NE((ObCellInfo*)NULL, cell);
+          //fprintf(stderr, "cell=%s\n", oceanbase::common::print_cellinfo(cell));
+          check_cell(cell_infos[row_index+1][col_index+1], *cell);
+          ret = getter.next_cell();
+          ASSERT_EQ(OB_ITER_END, ret);
+
+          //fprintf(stderr, "%ld\n", tablet_mgr.get_row_cache()->get_cache_mem_size());
+
+          get_param.reset();
+          ret = get_param.add_cell(cell_infos[row_index+1][col_index+1]);
+          ret = getter.init(tablet_mgr.get_serving_block_cache(), 
+                            tablet_mgr.get_serving_block_index_cache(), 
+                            get_param, readers, 1, false, tablet_mgr.get_row_cache());
+          ASSERT_EQ(OB_SUCCESS, ret);
+
+          ret = getter.next_cell();
+          EXPECT_EQ(OB_SUCCESS, ret);
+          ret = getter.get_cell(&cell, &row_change);
+          EXPECT_EQ(OB_SUCCESS, ret);
+          EXPECT_NE((ObCellInfo*)NULL, cell);
+          //fprintf(stderr, "cell=%s\n", oceanbase::common::print_cellinfo(cell));
+          check_cell(cell_infos[row_index+1][col_index+1], *cell);
+
+          ret = getter.next_cell();
+          ASSERT_EQ(OB_ITER_END, ret);
+          */
+
       }
 
     }//end namespace sstable

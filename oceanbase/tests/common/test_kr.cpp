@@ -32,7 +32,7 @@ static const int num = 4;
 
 int time_elaspe(struct timeval* start, struct timeval* end)  
 {  
-  return 1000000*(end->tv_sec - start->tv_sec) + end->tv_usec - start->tv_usec;  
+  return static_cast<int32_t>(1000000*(end->tv_sec - start->tv_sec) + end->tv_usec - start->tv_usec);  
 }   
 
 
@@ -216,7 +216,7 @@ int32_t KR_search3(const char * pattern, int32_t pattern_len, const char* text, 
       ret = pos;
       break;
     }
-    text_print = text_print*PRIMER - table[text[pos]+128] + text[pos+pattern_len];
+    text_print = static_cast<int32_t>(text_print*PRIMER - table[text[pos]+128] + text[pos+pattern_len]);
     ++pos;
   }
   return ret;
@@ -243,7 +243,7 @@ int32_t KR_search4(const char * pattern, int32_t pattern_len, const char* text, 
       ret = pos;
       break;
     }
-    text_print = (text_print << num) + text_print - table[text[pos]+128] + text[pos+pattern_len];
+    text_print = static_cast<int32_t>((text_print << num) + text_print - table[text[pos]+128] + text[pos+pattern_len]);
     ++pos;
   }
   return ret;
@@ -301,6 +301,8 @@ uint64_t cal_pattern_finger_print(const char * pattern, int len)
 
 int main(int argc, char ** argv)
 {
+  UNUSED(argc);
+  UNUSED(argv);
   struct timeval start, end;
   const char *pattern[8]={"Free softw","d be free "," socially ","bjects—su"," that it c","y. These p","abcdefghigklmnopqrstuvwxyzABCDEFGIJKLMNOPQRSTUVWXYZ", "hellohello"};
   
@@ -315,11 +317,11 @@ int main(int argc, char ** argv)
 //  funcs[4]=KR_search5;
 
  
-  int32_t t_length = strlen(text);
+  int32_t t_length = static_cast<int32_t>(strlen(text));
   for ( int i=0 ;i<8;i++)
   {
     ObString text_str(0, t_length, (char*)text);
-    int64_t p_length = strlen(pattern[i]);
+    int32_t p_length = static_cast<int32_t>(strlen(pattern[i]));
     uint64_t pat_print = cal_pattern_finger_print(pattern[i],p_length);
     int64_t table[256];
     ObString pattern_str;
@@ -333,7 +335,7 @@ int main(int argc, char ** argv)
     //printf("KR_search3 find match position is %d\n", KR_search3(pattern[i], p_length, text, t_length));
     //printf("KR_search4 find match position is %d\n", KR_search4(pattern[i], p_length, text, t_length));
     printf("KR_search5 find match position is %d\n", KR_search5(pattern[i], p_length,  pat_print, text, t_length, table));
-    printf("kr_search find match position is %d\n", ObStringSearch::kr_search(pattern_str, text_str));
+    printf("kr_search find match position is %ld\n", ObStringSearch::kr_search(pattern_str, text_str));
    
     
     gettimeofday(&start,0);

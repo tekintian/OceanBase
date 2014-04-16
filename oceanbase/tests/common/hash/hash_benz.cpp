@@ -13,7 +13,7 @@ using namespace oceanbase;
 using namespace common;
 using namespace hash;
 using namespace std;
-using namespace __gnu_cxx; 
+using namespace __gnu_cxx;
 
 const static uint32_t VALUE_SIZE = 1024;
 const static uint32_t ITEM_NUM = 1024 * 1024;
@@ -44,6 +44,7 @@ public:
   };
   void deallocate(void *buffer)
   {
+    UNUSED(buffer);
   };
   void *allocate()
   {
@@ -268,19 +269,21 @@ void benz_sht_get(value_t *values)
 
 int main(int argc, char **argv)
 {
+  UNUSED(argc);
   ob_init_memory_pool();
   rd_thread_num = atoi(argv[1]);
   wr_thread_num = atoi(argv[2]);
 
   value_t *values = new value_t[ITEM_NUM];
   test_data_build(values);
-  
+
   ght = new HashTable();
   sght = new StdHashTable(ITEM_NUM);
   //allocer_t allocer;
   SimpleAllocer<HashTableTypes<value_t>::AllocType> allocer;
-  ght->create(cal_next_prime(ITEM_NUM), &allocer);
-  
+  ObMalloc ballocer;
+  ght->create(cal_next_prime(ITEM_NUM), &allocer, &ballocer);
+
   benz_sht_set(values);
   benz_sht_get(values);
   benz_ht_set(values);
@@ -308,4 +311,3 @@ int main(int argc, char **argv)
   delete ght;
   delete[] values;
 }
-

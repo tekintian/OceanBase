@@ -1,16 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * test_ups_mutator.cpp for ...
+ *
+ *
+ * Version: 0.1: test_ups_mutator.cpp,v 0.1 2010/09/17 11:02:51 chuanhui Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - some work details if you want
  *
  */
 #include <iostream>
@@ -18,12 +19,14 @@
 #include <algorithm>
 #include <tblog.h>
 #include <gtest/gtest.h>
+#include "../common/test_rowkey_helper.h"
 
 #include "updateserver/ob_ups_mutator.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
+static CharArena allocator_;
 
 int init_mem_pool()
 {
@@ -48,6 +51,8 @@ void check_string(const ObString& expected, const ObString& real)
 
 void check_obj(const ObObj& expected, const ObObj& real)
 {
+  UNUSED(expected);
+  UNUSED(real);
   // TODO
 }
 
@@ -55,13 +60,13 @@ void check_cell(const ObCellInfo& expected, const ObCellInfo& real)
 {
   EXPECT_EQ(expected.column_id_, real.column_id_);
   EXPECT_EQ(expected.table_id_, real.table_id_);
-  check_string(expected.row_key_, real.row_key_);
+  EXPECT_EQ(expected.row_key_, real.row_key_);
 }
 
 void check_cell_with_name(const ObCellInfo& expected, const ObCellInfo& real)
 {
   check_string(expected.table_name_, real.table_name_);
-  check_string(expected.row_key_, real.row_key_);
+  EXPECT_EQ(expected.row_key_, real.row_key_);
   check_string(expected.column_name_, real.column_name_);
   check_obj(expected.value_, real.value_);
 }
@@ -95,11 +100,11 @@ TEST_F(TestUpsMutator, test_api_mutator)
 
   ObCellInfo cell_info;
   ObString table_name;
-  table_name.assign("oceanbase_table", strlen("oceanbase_table"));
-  ObString row_key;
-  row_key.assign("row_key", strlen("row_key"));
+  table_name.assign((char*)"oceanbase_table", static_cast<int32_t>(strlen("oceanbase_table")));
+  ObRowkey row_key;
+  row_key = make_rowkey("row_key", &allocator_);
   ObString column_name;
-  column_name.assign("column_name", strlen("column_name"));
+  column_name.assign((char*)"column_name", static_cast<int32_t>(strlen("column_name")));
   int64_t table_id = 10;
   uint64_t column_id = 5;
   int64_t value = 100;
@@ -200,6 +205,4 @@ int main(int argc, char** argv)
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-
 

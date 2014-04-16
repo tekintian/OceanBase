@@ -1,18 +1,4 @@
-/**
- * (C) 2007-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * client_simulator_test.cpp for ...
- *
- * Authors:
- *   yanran <yanran.hfs@taobao.com>
- *
- */
+
 #include "client_simulator.h"
 
 void RandomTest()
@@ -33,4 +19,3 @@ int main()
   RandomTest();
   return 0;
 }
-

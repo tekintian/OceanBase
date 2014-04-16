@@ -1,18 +1,20 @@
-/**
- * (C) 2007-2011 Alibaba Group Holding Limited.
+/*
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * perf_test.cpp for ...
+ *
+ *
+ * Version: 0.1: perf_test.cpp,v 0.1 2011/03/22 14:32:03 chuanhui Exp $
  *
  * Authors:
- *   rizhao <rizhao.ych@taobao.com>
+ *   chuanhui <rizhao.ych@taobao.com>
+ *     - some work details if you want
  *
  */
+
 #include <pthread.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -49,7 +51,7 @@ static int set_server_addr(const char* addr_str, ObServer& server);
 struct ConfigParam
 {
   int64_t write_thread_num_;
-    int64_t write_thread_idx_;
+  int64_t write_thread_idx_;
   int64_t write_start_row_;
   int64_t write_end_row_;
   int64_t read_thread_num_;
@@ -909,7 +911,6 @@ int main(int argc, char** argv)
   g_update_client.destroy();
   return 0;
 }
-
 
 
 

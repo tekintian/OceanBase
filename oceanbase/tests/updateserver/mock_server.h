@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * mock_server.h for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
- */
 #ifndef MOCK_SERVER_H_
 #define MOCK_SERVER_H_
 
@@ -82,5 +67,3 @@ namespace oceanbase
 
 
 #endif // MOCK_SERVER_H_
-
-

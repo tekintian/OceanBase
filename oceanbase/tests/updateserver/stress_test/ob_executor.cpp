@@ -1,18 +1,17 @@
 /**
- * (C) 2007-2011 Alibaba Group Holding Limited.
+ * (C) 2007-2010 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  * Version: $Id$
- *
- * ob_executor.cpp for ...
  *
  * Authors:
  *   yanran <yanran.hfs@taobao.com>
- *
+ *     - some work details if you want
  */
+
 #include "ob_executor.h"
 
 #include "common/ob_define.h"
@@ -234,5 +233,4 @@ int ObExecutor::exec_scan(const ObTestBomb &bomb)
 
   return ret;
 }
-
 

@@ -14,7 +14,6 @@
 ./test_blockcache
 ./test_blockreader
 ./test_aio_buffer_mgr
-./test_fileinfocache
 
 #tests of sstable get and scan interface
 ./test_sstable_getter

@@ -1,18 +1,3 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * mock_root_server.cpp for ...
- *
- * Authors:
- *   yubai <yubai.lk@taobao.com>
- *
- */
 #include "common/ob_result.h"
 #include "common/ob_scanner.h"
 #include "common/ob_read_common_data.h"
@@ -31,7 +16,7 @@ int MockRootServer::initialize()
 }
 
 
-ObPacket* MockRootServer::do_request(ObPacket* base_packet, bool &is_done)
+int MockRootServer::do_request(ObPacket* base_packet)
 {
   int ret = OB_SUCCESS;
   ObPacket* ob_packet = base_packet;
@@ -79,7 +64,8 @@ ObPacket* MockRootServer::do_request(ObPacket* base_packet, bool &is_done)
       TBSYS_LOG(ERROR, "check handle failed:ret[%d]", ret);
     }
   }
-  return NULL;
+
+  return ret;
 }
 
 
@@ -321,6 +307,4 @@ int main(int argc, char ** argv)
   root_server_thread.join();
   return 0;
 }
-
-
 

@@ -1,28 +1,17 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * test_cell_operator.cpp for ...
- *
- * Authors:
- *   wushi <wushi.ly@taobao.com>
- *
- */
 #include "common/ob_read_common_data.h"
 #include "gtest/gtest.h"
 #include "common/ob_malloc.h"
 #include "common/ob_string.h"
 #include "common/ob_action_flag.h"
+#include "common/ob_common_param.h"
 #include "mergeserver/ob_cell_operator.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
+
+static CharArena allocator_;
 TEST(TestObCellInfo, intTestApply)
 { 
   ObCellInfo del_cell;
@@ -34,17 +23,17 @@ TEST(TestObCellInfo, intTestApply)
   int64_t real_val = 0;
   char table_name[128] = "tablename";
   ObString table_name_str;
-  table_name_str.assign(table_name,strlen(table_name) + 1);
+  table_name_str.assign(table_name,static_cast<int32_t>(strlen(table_name) + 1));
   src_cell.table_name_ = table_name_str;
 
   char rowkey[128] = "rowkey";
   ObString rowkey_str;
-  rowkey_str.assign(rowkey,strlen(rowkey)+1);
-  src_cell.row_key_ = rowkey_str;
+  rowkey_str.assign(rowkey,static_cast<int32_t>(strlen(rowkey)+1));
+  src_cell.row_key_ = make_rowkey(rowkey, &allocator_);;
 
   char column_name[128] = "col";
   ObString column_name_str;
-  column_name_str.assign(column_name,strlen(column_name)+1);
+  column_name_str.assign(column_name,static_cast<int32_t>(strlen(column_name)+1));
   src_cell.column_name_ = column_name_str;
 
   /// copy cell
@@ -179,21 +168,19 @@ TEST(TestObCellInfo, stringTestApply)
   long long int expect_val_int = 500;
   char table_name[128] = "tablename";
   ObString table_name_str;
-  table_name_str.assign(table_name,strlen(table_name) + 1);
+  table_name_str.assign(table_name,static_cast<int32_t>(strlen(table_name) + 1));
   src_cell.table_name_ = table_name_str;
 
   char rowkey[128] = "rowkey";
-  ObString rowkey_str;
-  rowkey_str.assign(rowkey,strlen(rowkey)+1);
-  src_cell.row_key_ = rowkey_str;
+  src_cell.row_key_ = make_rowkey(rowkey, &allocator_);;
 
   char column_name[128] = "col";
   ObString column_name_str;
-  column_name_str.assign(column_name,strlen(column_name)+1);
+  column_name_str.assign(column_name,static_cast<int32_t>(strlen(column_name)+1));
   src_cell.column_name_ = column_name_str;
 
   /// copy cell
-  expect_val.assign(value_content,strlen(value_content));
+  expect_val.assign(value_content,static_cast<int32_t>(strlen(value_content)));
   src_cell.value_.set_varchar(expect_val);
   EXPECT_EQ(ob_cell_info_apply(dst_cell,src_cell),0);
   EXPECT_TRUE(dst_cell.table_name_== src_cell.table_name_);
@@ -205,7 +192,7 @@ TEST(TestObCellInfo, stringTestApply)
   /// update 
   expect_val_int *=2;
   snprintf(value_content,sizeof(value_content),"%lld",expect_val_int);
-  expect_val.assign(value_content,strlen(value_content));
+  expect_val.assign(value_content,static_cast<int32_t>(strlen(value_content)));
   src_cell.value_.set_varchar(expect_val);
   EXPECT_EQ(ob_cell_info_apply(dst_cell,src_cell),0);
   EXPECT_EQ(dst_cell.value_.get_varchar(real_val),0);
@@ -214,7 +201,7 @@ TEST(TestObCellInfo, stringTestApply)
   /// insert 
   expect_val_int /=2;
   snprintf(value_content,sizeof(value_content),"%lld",expect_val_int);
-  expect_val.assign(value_content,strlen(value_content));
+  expect_val.assign(value_content,static_cast<int32_t>(strlen(value_content)));
   src_cell.value_.set_varchar(expect_val);
   EXPECT_EQ(ob_cell_info_apply(dst_cell,src_cell),0);
   EXPECT_EQ(dst_cell.value_.get_varchar(real_val),0);
@@ -223,7 +210,7 @@ TEST(TestObCellInfo, stringTestApply)
   /// add 
   expect_val_int -= 10;
   snprintf(value_content,sizeof(value_content),"%lld",expect_val_int);
-  expect_val.assign(value_content,strlen(value_content));
+  expect_val.assign(value_content,static_cast<int32_t>(strlen(value_content)));
   src_cell.value_.set_varchar(expect_val);
   EXPECT_EQ(ob_cell_info_apply(dst_cell,src_cell),0);
 
@@ -250,5 +237,3 @@ int main(int argc, char **argv)
   testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
-
-

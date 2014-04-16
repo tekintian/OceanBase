@@ -1,5 +1,5 @@
 /**
- * (C) 2010 Taobao Inc.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
@@ -12,8 +12,8 @@
  *
  */
 #include "common/ob_define.h"
-#include "sstable/ob_sstable_stat.h"
-
+#include "common/ob_common_stat.h"
+using namespace oceanbase::common;
 #ifndef NO_STAT
 namespace oceanbase
 {
@@ -36,9 +36,13 @@ namespace oceanbase
         break;
       case INDEX_BLOCK_CACHE_MISS:
         break;
-      case INDEX_DISK_IO_NUM:
+      case INDEX_DISK_IO_READ_NUM:
         break;
-      case INDEX_DISK_IO_BYTES:
+      case INDEX_DISK_IO_WRITE_NUM:
+        break;
+      case INDEX_DISK_IO_READ_BYTES:
+        break;
+      case INDEX_DISK_IO_WRITE_BYTES:
         break;
       default:
         break;
@@ -62,9 +66,13 @@ namespace oceanbase
         break;
       case INDEX_BLOCK_CACHE_MISS:
         break;
-      case INDEX_DISK_IO_NUM:
+      case INDEX_DISK_IO_READ_NUM:
         break;
-      case INDEX_DISK_IO_BYTES:
+      case INDEX_DISK_IO_WRITE_NUM:
+        break;
+      case INDEX_DISK_IO_READ_BYTES:
+        break;
+      case INDEX_DISK_IO_WRITE_BYTES:
         break;
       default:
         break;

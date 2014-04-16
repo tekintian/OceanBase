@@ -1,19 +1,20 @@
-/**
- * (C) 2010-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * test_root_meta.cpp for ...
- *
- * Authors:
- *   qushan <qushan@taobao.com>
- *
+/*
+ *   (C) 2007-2010 Taobao Inc.
+ *   
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License version 2 as
+ *   published by the Free Software Foundation.
+ *       
+ *         
+ *         
+ *   Version: $Id: ipvsadm.c,v 1.27 2005/12/10 16:00:07 wensong Exp $
+ *           
+ *   Authors:
+ *      qushan <qushan@taobao.com>
+ *        - some work details if you want
+ *      Author Name ...
+ *               
  */
-
 
 #include <gtest/gtest.h>
 #include "ob_root_meta.h"
@@ -128,6 +129,5 @@ int main(int argc, char** argv)
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
 
 

@@ -1,18 +1,4 @@
-/**
- * (C) 2007-2011 Alibaba Group Holding Limited.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
- *
- * client_simulator.h for ...
- *
- * Authors:
- *   yanran <yanran.hfs@taobao.com>
- *
- */
+
 #include <common/ob_mutator.h>
 #include <common/ob_scanner.h>
 #include <common/ob_scan_param.h>
@@ -350,5 +336,4 @@ class GI
     ~GI() {}
     GI(const GI&) {}
 };
-
 

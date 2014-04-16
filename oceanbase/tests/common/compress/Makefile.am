@@ -12,3 +12,9 @@ bin_PROGRAMS=test_libcomp
 
 test_libcomp_SOURCES = test_libcomp.cpp
 
+check_SCRIPTS = $(bin_PROGRAMS)
+TESTS = $(check_SCRIPTS) 
+
+CLEANFILES = $(check_SCRIPTS)
+clean-local:
+	-rm -f *.gcov *.gcno *.gcda
