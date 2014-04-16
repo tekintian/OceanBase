@@ -12,7 +12,7 @@
  *     - some work details if you want
  */
 
-#include "common/ob_single_log_reader.h"
+#include "common/ob_repeated_log_reader.h"
 #include "common/utility.h"
 #include "common/hash/ob_hashmap.h"
 #include "updateserver/ob_ups_mutator.h"
@@ -45,7 +45,7 @@ public:
     return param_inst;
   }
 
-  ObSchemaManager& get_sch_mgr() {return sch_mgr_;}
+  ObSchemaManagerV2& get_sch_mgr() {return sch_mgr_;}
   bool has_sub_row_key() {return sub_row_key_[0] != '\0';}
   bool has_schema() {return schema_file_[0] != '\0';}
   char* get_sub_row_key() {return sub_row_key_;}
@@ -56,16 +56,23 @@ public:
 
   void init_schema()
   {
-    const ObSchema *table_iter = Param::get_instance().get_sch_mgr().begin();
-    for (; table_iter != Param::get_instance().get_sch_mgr().end(); table_iter++)
+    const ObTableSchema *table_iter =
+        Param::get_instance().get_sch_mgr().table_begin();
+    for (; table_iter != Param::get_instance().get_sch_mgr().table_end();
+        table_iter++)
     {
       Param::IDMap *new_tab = new Param::IDMap();
       new_tab->create(64);
 
-      const ObColumnSchema *col_iter = table_iter->column_begin();
-      for (; col_iter != table_iter->column_end(); col_iter++)
+      int32_t column_num = 0;
+      const ObColumnSchemaV2 *col_iter =
+          Param::get_instance().get_sch_mgr().get_table_schema(
+              table_iter->get_table_id(), column_num);
+      printf("column_num=%d\n", column_num);
+      for (int32_t i = 0; i < column_num; i++)
       {
         new_tab->set(col_iter->get_id(), std::string(col_iter->get_name()));
+        col_iter++;
       }
 
       Param::get_instance().get_sch_map().set(table_iter->get_table_id(), new_tab);
@@ -88,7 +95,7 @@ private:
 private:
   char sub_row_key_[64];
   char schema_file_[64];
-  ObSchemaManager sch_mgr_;
+  ObSchemaManagerV2 sch_mgr_;
 
   FILE* out_stream_;
 
@@ -128,58 +135,65 @@ public:
   static void init_log_command_str()
   {
     memset(LogCommandStr, 0x00, sizeof(LogCommandStr));
-    LogCommandStr[OB_LOG_SWITCH_LOG] = "SWITCH_LOG";
-    LogCommandStr[OB_LOG_CHECKPOINT] = "CHECKPOINT";
-    LogCommandStr[OB_LOG_UPS_MUTATOR] = "UPS_MUTATOR";
-    LogCommandStr[OB_UPS_SWITCH_SCHEMA] = "UPS_SWITCH_SCHEMA";
-    LogCommandStr[OB_RT_SCHEMA_SYNC] = "OB_RT_SCHEMA_SYNC";
-    LogCommandStr[OB_RT_CS_REGIST] = "OB_RT_CS_REGIST";
-    LogCommandStr[OB_RT_MS_REGIST] = "OB_RT_MS_REGIST";
-    LogCommandStr[OB_RT_SERVER_DOWN] = "OB_RT_SERVER_DOWN";
-    LogCommandStr[OB_RT_CS_LOAD_REPORT] = "OB_RT_CS_LOAD_REPORT";
-    LogCommandStr[OB_RT_CS_MIGRATE_DONE] = "OB_RT_CS_MIGRATE_DONE";
-    LogCommandStr[OB_RT_CS_START_SWITCH_ROOT_TABLE] = "OB_RT_CS_START_SWITCH_ROOT_TABLE";
-    LogCommandStr[OB_RT_START_REPORT] = "OB_RT_START_REPORT";
-    LogCommandStr[OB_RT_REPORT_TABLETS] = "OB_RT_REPORT_TABLETS";
-    LogCommandStr[OB_RT_ADD_NEW_TABLET] = "OB_RT_ADD_NEW_TABLET";
-    LogCommandStr[OB_RT_CREATE_TABLE_DONE] = "OB_RT_CREATE_TABLE_DONE";
-    LogCommandStr[OB_RT_BEGIN_BALANCE] = "OB_RT_BEGIN_BALANCE";
-    LogCommandStr[OB_RT_BALANCE_DONE] = "OB_RT_BALANCE_DONE";
-    LogCommandStr[OB_RT_US_MEM_FRZEEING] = "OB_RT_US_MEM_FRZEEING";
-    LogCommandStr[OB_RT_US_MEM_FROZEN] = "OB_RT_US_MEM_FROZEN";
-    LogCommandStr[OB_RT_CS_START_MERGEING] = "OB_RT_CS_START_MERGEING";
-    LogCommandStr[OB_RT_CS_MERGE_OVER] = "OB_RT_CS_MERGE_OVER";
-    LogCommandStr[OB_RT_CS_UNLOAD_DONE] = "OB_RT_CS_UNLOAD_DONE";
-    LogCommandStr[OB_RT_US_UNLOAD_DONE] = "OB_RT_US_UNLOAD_DONE";
-    LogCommandStr[OB_RT_DROP_CURRENT_BUILD] = "OB_RT_DROP_CURRENT_BUILD";
+    LogCommandStr[OB_LOG_SWITCH_LOG]            = "SWITCH_LOG";
+    LogCommandStr[OB_LOG_CHECKPOINT]            = "CHECKPOINT";
+    LogCommandStr[OB_LOG_NOP]                   = "NOP";
+    LogCommandStr[OB_LOG_UPS_MUTATOR]           = "UPS_MUTATOR";
+    LogCommandStr[OB_UPS_SWITCH_SCHEMA]         = "UPS_SWITCH_SCHEMA";
+    LogCommandStr[OB_RT_SCHEMA_SYNC]            = "OB_RT_SCHEMA_SYNC";
+    LogCommandStr[OB_RT_CS_REGIST]              = "OB_RT_CS_REGIST";
+    LogCommandStr[OB_RT_MS_REGIST]              = "OB_RT_MS_REGIST";
+    LogCommandStr[OB_RT_SERVER_DOWN]            = "OB_RT_SERVER_DOWN";
+    LogCommandStr[OB_RT_CS_LOAD_REPORT]         = "OB_RT_CS_LOAD_REPORT";
+    LogCommandStr[OB_RT_CS_MIGRATE_DONE]        = "OB_RT_CS_MIGRATE_DONE";
+    LogCommandStr[OB_RT_CS_START_SWITCH_ROOT_TABLE]
+        = "OB_RT_CS_START_SWITCH_ROOT_TABLE";
+    LogCommandStr[OB_RT_START_REPORT]           = "OB_RT_START_REPORT";
+    LogCommandStr[OB_RT_REPORT_TABLETS]         = "OB_RT_REPORT_TABLETS";
+    LogCommandStr[OB_RT_ADD_NEW_TABLET]         = "OB_RT_ADD_NEW_TABLET";
+    LogCommandStr[OB_RT_CREATE_TABLE_DONE]      = "OB_RT_CREATE_TABLE_DONE";
+    LogCommandStr[OB_RT_BEGIN_BALANCE]          = "OB_RT_BEGIN_BALANCE";
+    LogCommandStr[OB_RT_BALANCE_DONE]           = "OB_RT_BALANCE_DONE";
+    LogCommandStr[OB_RT_US_MEM_FRZEEING]        = "OB_RT_US_MEM_FRZEEING";
+    LogCommandStr[OB_RT_US_MEM_FROZEN]          = "OB_RT_US_MEM_FROZEN";
+    LogCommandStr[OB_RT_CS_START_MERGEING]      = "OB_RT_CS_START_MERGEING";
+    LogCommandStr[OB_RT_CS_MERGE_OVER]          = "OB_RT_CS_MERGE_OVER";
+    LogCommandStr[OB_RT_CS_UNLOAD_DONE]         = "OB_RT_CS_UNLOAD_DONE";
+    LogCommandStr[OB_RT_US_UNLOAD_DONE]         = "OB_RT_US_UNLOAD_DONE";
+    LogCommandStr[OB_RT_DROP_CURRENT_BUILD]     = "OB_RT_DROP_CURRENT_BUILD";
+    LogCommandStr[OB_RT_DROP_LAST_CS_DURING_MERGE]
+        = "OB_RT_DROP_LAST_CS_DURING_MERGE";
+    LogCommandStr[OB_RT_SYNC_FROZEN_VERSION]    = "OB_RT_SYNC_FROZEN_VERSION";
+    LogCommandStr[OB_RT_SET_UPS_LIST]           = "OB_RT_SET_UPS_LIST";
+    LogCommandStr[OB_RT_SET_CLIENT_CONFIG]      = "OB_RT_SET_CLIENT_CONFIG";
   }
 
   static void init_action_flag_str()
   {
     memset(ActionFlagStr, 0x00, sizeof(ActionFlagStr));
-    ActionFlagStr[ObActionFlag::OP_UPDATE] = "UPDATE";
-    ActionFlagStr[ObActionFlag::OP_INSERT] = "INSERT";
-    ActionFlagStr[ObActionFlag::OP_DEL_ROW] = "DEL_ROW";
-    ActionFlagStr[ObActionFlag::OP_DEL_TABLE] = "DEL_TABLE";
+    ActionFlagStr[ObActionFlag::OP_UPDATE]      = "UPDATE";
+    ActionFlagStr[ObActionFlag::OP_INSERT]      = "INSERT";
+    ActionFlagStr[ObActionFlag::OP_DEL_ROW]     = "DEL_ROW";
+    ActionFlagStr[ObActionFlag::OP_DEL_TABLE]   = "DEL_TABLE";
   }
 
   static void init_obj_type_str()
   {
     memset(ObjTypeStr, 0x00, sizeof(ObjTypeStr));
-    ObjTypeStr[ObNullType] = "NULL";
-    ObjTypeStr[ObIntType] = "Int";
-    ObjTypeStr[ObFloatType] = "Float";
-    ObjTypeStr[ObDoubleType] = "Double";
-    ObjTypeStr[ObDateTimeType] = "DateTime";
-    ObjTypeStr[ObPreciseDateTimeType] = "PreciseDateTime";
-    ObjTypeStr[ObVarcharType] = "Varchar";
-    ObjTypeStr[ObSeqType] = "Seq";
-    ObjTypeStr[ObCreateTimeType] = "CreateTime";
-    ObjTypeStr[ObModifyTimeType] = "ModifyTime";
-    ObjTypeStr[ObExtendType] = "Extend";
+    ObjTypeStr[ObNullType]                      = "NULL";
+    ObjTypeStr[ObIntType]                       = "Int";
+    ObjTypeStr[ObFloatType]                     = "Float";
+    ObjTypeStr[ObDoubleType]                    = "Double";
+    ObjTypeStr[ObDateTimeType]                  = "DateTime";
+    ObjTypeStr[ObPreciseDateTimeType]           = "PreciseDateTime";
+    ObjTypeStr[ObVarcharType]                   = "Varchar";
+    ObjTypeStr[ObSeqType]                       = "Seq";
+    ObjTypeStr[ObCreateTimeType]                = "CreateTime";
+    ObjTypeStr[ObModifyTimeType]                = "ModifyTime";
+    ObjTypeStr[ObExtendType]                    = "Extend";
   }
 
-  ID_TO_STR_FUNC(str_log_cmd, LogCommandStr, LogCommand)
+  ID_TO_STR_FUNC(str_log_cmd, LogCommandStr, int64_t)
   ID_TO_STR_FUNC(str_action_flag, ActionFlagStr, int64_t)
   ID_TO_STR_FUNC(str_obj_type, ObjTypeStr, int)
 
@@ -206,7 +220,7 @@ const char* get_table_name(uint64_t id)
 const char* get_column_name(uint64_t tab_id, uint64_t col_id)
 {
   static std::string column_name;
-  Param::IDMap *col_map;
+  Param::IDMap *col_map = NULL;
   int ret = Param::get_instance().get_sch_map().get(tab_id, col_map);
   if (HASH_NOT_EXIST == ret) column_name = "UNKNOWN";
   else
@@ -224,8 +238,10 @@ void print_ups_mutator_head(int64_t seq, int64_t len, const ObUpsMutator &mut, c
   ctime_r(&tm, time_buf);
   time_buf[strlen(time_buf) - 1] = '\0';
 
-  fprintf(Param::get_instance().get_out_stream(), "SEQ: %lu\tPayload Length: %ld\tTYPE: %s\tMutatorTime: %s\t%s\n",
-      seq, len, IDS::str_log_cmd(OB_LOG_UPS_MUTATOR), time_buf, op);
+  fprintf(Param::get_instance().get_out_stream(), "SEQ: %lu\tPayload Length: %ld\tTYPE: %s\tMutatorTime: %s\t%s %ld "
+          "ChecksumBefore=%lu ChecksumAfter=%lu\n",
+          seq, len, IDS::str_log_cmd(OB_LOG_UPS_MUTATOR), time_buf, op, mut.get_mutate_timestamp(),
+          mut.get_memtable_checksum_before_mutate(), mut.get_memtable_checksum_after_mutate());
 }
 
 void print_ups_mutator_body(int cell_idx, ObMutatorCellInfo* cell, const char* row_key_buf)
@@ -310,7 +326,7 @@ int print_ups_mutator(int64_t seq, const char* buf, int64_t len)
     char row_key_buf[row_key_len];
     row_key_buf[0] = '\0';
 
-    const char* mutator_op = NULL;
+    const char* mutator_op = "OB Operation"; // default is OB Operation
 
     bool print_flag = false;
 
@@ -347,25 +363,16 @@ int print_ups_mutator(int64_t seq, const char* buf, int64_t len)
             if (ObActionFlag::OP_USE_OB_SEM == cell->cell_info.value_.get_ext())
             {
               mutator_op = "OB Operation";
+              continue;
             }
             else if (ObActionFlag::OP_USE_DB_SEM == cell->cell_info.value_.get_ext())
             {
               mutator_op = "DB Operation";
+              continue;
             }
-            else
-            {
-              fprintf(stderr, "OB/DB operation deserialize error, ext=%ld\n", cell->cell_info.value_.get_ext());
-              ret = OB_ERROR;
-              break;
-            }
-          }
-          else
-          {
-            mutator_op = "OB Operation";
           }
         }
 
-        hex_to_str(cell->cell_info.row_key_.ptr(), cell->cell_info.row_key_.length(), row_key_buf, row_key_len);
         if (!Param::get_instance().has_sub_row_key() || strstr(row_key_buf, Param::get_instance().get_sub_row_key()) != NULL)
         {
           if (!print_flag)
@@ -373,14 +380,14 @@ int print_ups_mutator(int64_t seq, const char* buf, int64_t len)
             print_ups_mutator_head(seq, len, mut, mutator_op);
             print_flag = true;
           }
-          print_ups_mutator_body(cell_idx, cell, row_key_buf);
+          print_ups_mutator_body(cell_idx, cell, to_cstring(cell->cell_info.row_key_));
         }
       }
 
       ++cell_idx;
     }
   }
-  
+
   return ret;
 }
 
@@ -407,7 +414,7 @@ int main(int argc, char* argv[])
     p = strrchr(argv[1], '/');
     if (NULL == p)
     {
-      log_dir = ".";
+      log_dir = const_cast<char*> (".");
       log_name = argv[1];
     }
     else
@@ -450,7 +457,7 @@ int main(int argc, char* argv[])
   // read log
   if (0 == ret)
   {
-    ObSingleLogReader reader;
+    ObRepeatedLogReader reader;
     ret = reader.init(log_dir);
     if (OB_SUCCESS != ret)
     {

@@ -24,6 +24,7 @@ namespace oceanbase
       INT32,
       INT64,
       VARCHAR,
+      DATETIME
     };
 
     struct row_key_format

@@ -141,7 +141,7 @@ int init_mgr()
   ObBlockIndexCacheConf bic_conf;
   bic_conf.cache_mem_size = 128 * 1024 * 1024;
 
-  err = tablet_mgr.init(bc_conf, bic_conf, 100);
+  err = tablet_mgr.init(bc_conf, bic_conf);
 
   return err;
 }

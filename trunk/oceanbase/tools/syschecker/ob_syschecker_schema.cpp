@@ -1,5 +1,5 @@
 /**
- * (C) 2010 Taobao Inc.
+ * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License 
@@ -59,6 +59,7 @@ namespace oceanbase
           schema->get_table_name(), aux_column_name, column, column_size);
         if (OB_SUCCESS != ret || column_size <= 0)
         {
+          TBSYS_LOG(WARN, "failed to get column schema, ret=%d", ret);
           column[0] = NULL;
         }
       }
@@ -102,6 +103,15 @@ namespace oceanbase
         }
       }
 
+      if (NULL == wt_schema_)
+      {
+        wt_schema_ = schema_manager_.get_table_schema(1001);
+      }
+      if (NULL == jt_schema_)
+      {
+        jt_schema_ = schema_manager_.get_table_schema(1002);
+      }
+
       return ret;
     }
 
@@ -124,8 +134,15 @@ namespace oceanbase
       else
       {
         column = schema_manager_.get_table_schema(wt_schema_->get_table_id(), column_size);
+        const ObRowkeyInfo& rowkey_info = schema_manager_.get_table_schema(wt_schema_->get_table_id())->get_rowkey_info();
         for (int64_t i = 0; i < column_size; ++i)
         {
+          // donot add rowkey columns;
+          if (rowkey_info.is_rowkey_column(column[i].get_id()))
+          {
+            continue;
+          }
+
           column_name = column[i].get_name();
           type = column[i].get_type();
 
@@ -135,6 +152,8 @@ namespace oceanbase
             aux_column = find_aux_column_schema(wt_schema_, column_name);
             wt_column_[wt_column_count_].org_ = &column[i];
             wt_column_[wt_column_count_].aux_ = aux_column;
+            TBSYS_LOG(INFO, "wide table: column=%s, aux_column=%s",
+                column[i].get_name(), aux_column == NULL ? NULL : aux_column->get_name());
             wt_column_count_++;
 
             if (NULL == column[i].get_join_info())
@@ -205,8 +224,15 @@ namespace oceanbase
       else
       {
         column = schema_manager_.get_table_schema(jt_schema_->get_table_id(), column_size);
+        const ObRowkeyInfo& rowkey_info = schema_manager_.get_table_schema(jt_schema_->get_table_id())->get_rowkey_info();
         for (int64_t i = 0; i < column_size; ++i)
         {
+          // donot add rowkey columns;
+          if (rowkey_info.is_rowkey_column(column[i].get_id()))
+          {
+            continue;
+          }
+
           column_name = column[i].get_name();
           type = column[i].get_type();
 
@@ -216,6 +242,8 @@ namespace oceanbase
             aux_column = find_aux_column_schema(jt_schema_, column_name);
             jt_column_[jt_column_count_].org_ = &column[i];
             jt_column_[jt_column_count_].aux_ = aux_column;
+            TBSYS_LOG(INFO, "join table: column=%s, aux_column=%s",
+                column[i].get_name(), aux_column == NULL ? NULL : aux_column->get_name());
             jt_column_count_++;
 
             //create time and modify time can't be written
@@ -367,7 +395,7 @@ namespace oceanbase
       if (inited_ && NULL != wt_schema_)
       {
         name_str = wt_schema_->get_table_name();
-        table_name.assign(const_cast<char*>(name_str), strlen(name_str));
+        table_name.assign(const_cast<char*>(name_str), static_cast<int32_t>(strlen(name_str)));
       }
 
       return table_name;
@@ -381,7 +409,7 @@ namespace oceanbase
       if (inited_ && NULL != jt_schema_)
       {
         name_str = jt_schema_->get_table_name();
-        table_name.assign(const_cast<char*>(name_str), strlen(name_str));
+        table_name.assign(const_cast<char*>(name_str), static_cast<int32_t>(strlen(name_str)));
       }
 
       return table_name;
@@ -489,9 +517,28 @@ namespace oceanbase
       ObString column_name;
 
       name_str = column.get_name();
-      column_name.assign(const_cast<char*>(name_str), strlen(name_str));
+      column_name.assign(const_cast<char*>(name_str), static_cast<int32_t>(strlen(name_str)));
 
       return column_name;
     }
+
+    const common::ObRowkeyInfo& ObSyscheckerSchema::get_rowkey_info(const uint64_t table_id) const
+    {
+      return schema_manager_.get_table_schema(table_id)->get_rowkey_info();
+    }
+
+    bool ObSyscheckerSchema::is_rowkey_column(const uint64_t table_id, const uint64_t column_id) const
+    {
+      return get_rowkey_info(table_id).is_rowkey_column(column_id);
+    }
+
+    bool ObSyscheckerSchema::is_prefix_column(const uint64_t table_id, const uint64_t column_id) const
+    {
+      const common::ObRowkeyInfo& rowkey_info = get_rowkey_info(table_id);
+      ObRowkeyColumn column;
+      int64_t index = -1;
+      return 0 == rowkey_info.get_index(column_id, index, column) && index == 0;
+    }
+
   } // end namespace syschecker
 } // end namespace oceanbase

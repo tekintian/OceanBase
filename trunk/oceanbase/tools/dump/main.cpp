@@ -59,18 +59,17 @@ int deamonize()
 
 int setup_db_env(const char *config_file, bool start_deamon)
 {
-  int ret = OB_SUCCESS;
+  OceanbaseDb::global_init(DUMP_CONFIG->get_log_dir().c_str(), 
+      DUMP_CONFIG->get_log_level().c_str());
 
+  int ret = OB_SUCCESS;
   ret = DUMP_CONFIG->load(config_file);
-  if (ret == OB_SUCCESS && start_deamon) {
-    ret = deamonize();
+  if (ret == OB_SUCCESS) {
+    if (start_deamon) {
+      ret = deamonize();
+    }
   } else {
     TBSYS_LOG(ERROR, "initialize config file error, quiting");
-  }
-
-  if (ret == OB_SUCCESS) {
-    OceanbaseDb::global_init(DUMP_CONFIG->get_log_dir().c_str(), 
-                             DUMP_CONFIG->get_log_level().c_str());
   }
 
   return ret;
@@ -86,6 +85,8 @@ int do_dump_work()
   int ret = OB_SUCCESS;
   OceanbaseDb db(DUMP_CONFIG->get_host(), DUMP_CONFIG->get_port(), DUMP_CONFIG->get_network_timeout());
   db.init();
+
+  db.set_consistency(DUMP_CONFIG->get_consistency());
 
   string output_dir = DUMP_CONFIG->get_output_dir();
   string log_dir = DUMP_CONFIG->get_ob_log();

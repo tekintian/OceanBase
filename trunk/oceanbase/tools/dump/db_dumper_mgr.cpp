@@ -45,6 +45,7 @@ DbDumperMgr *DbDumperMgr::instance()
 
 void DbDumperMgr::signal_handler(int sig)
 {
+    UNUSED(sig);
     instance_->stop();
 }
 
@@ -57,12 +58,12 @@ DbDumperMgr::~DbDumperMgr()
 
 int64_t DbDumperMgr::get_start_log()
 {
-  int log_id = DUMP_CONFIG->get_init_log();
+  int log_id = static_cast<int32_t>(DUMP_CONFIG->get_init_log());
 
   TBSYS_LOG(INFO, "init log id = %d", log_id);
   int ret = ckp_.load_checkpoint();
   if (ret == OB_SUCCESS) {
-    log_id = ckp_.id();
+    log_id = static_cast<int32_t>(ckp_.id());
   } else {
     TBSYS_LOG(INFO, "no checkpoint info, using init_log_id=%d", log_id);
   }
@@ -144,8 +145,8 @@ int DbDumperMgr::start()
   }
 
   if (ret == OB_SUCCESS) {
-    DbThreadMgr::get_instance()->init(dumper_);
-    ret = DbThreadMgr::get_instance()->start(worker_thread_nr_);
+    DbThreadMgr::get_instance()->init(dumper_, DUMP_CONFIG->muti_get_nr());
+    ret = DbThreadMgr::get_instance()->start(static_cast<int32_t>(worker_thread_nr_));
   } 
 
   if (ret == OB_SUCCESS) {
@@ -183,18 +184,12 @@ void DbDumperMgr::stop()
     TBSYS_LOG(INFO, "stop dumper process");
     monitor_->stop_service();
 
-    delete parser_;
-    parser_ = NULL;
     TBSYS_LOG(INFO, "stop parser");
-
-    delete monitor_;
-    monitor_ = NULL;
+    parser_->stop_parse();
 
     DbThreadMgr::get_instance()->stop();
     DbThreadMgr::get_instance()->destroy();
 
-    delete dumper_;
-    dumper_ = NULL;
   }
 }
 
@@ -202,4 +197,13 @@ void DbDumperMgr::wait()
 {
   if (started_)
     monitor_->wait();
+
+  delete parser_;
+  parser_ = NULL;
+
+  delete monitor_;
+  monitor_ = NULL;
+
+  delete dumper_;
+  dumper_ = NULL;
 }

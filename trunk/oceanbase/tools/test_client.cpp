@@ -30,6 +30,7 @@
 #include "common/ob_malloc.h"
 #include "common/utility.h"
 #include "common/ob_action_flag.h"
+#include "test_utils.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::common::serialization;
@@ -569,7 +570,7 @@ int migrate_test_case(
   if( item_type <= 1)
     encode_i8(end_key,key_size,pos,item_type);
   else
-    encode_i8(end_key,key_size,pos,0xFF);
+    encode_i8(end_key,key_size,pos,static_cast<int8_t>(0xFF));
   memset(end_key+pos,0xFF,key_size-pos);
 
   hex_dump(start_key,key_size);
@@ -649,11 +650,33 @@ int migrate_test_case(
   }
 */
 
+void dump_scanner(ObScanner &scanner)
+{
+  ObScannerIterator iter;
+  int total_count = 0;
+  int row_count = 0;
+  bool is_row_changed = false;
+  for (iter = scanner.begin(); iter != scanner.end(); iter++)
+  {
+    ObCellInfo *cell_info;
+    iter.get_cell(&cell_info, &is_row_changed);
+    if (is_row_changed) 
+    {
+      ++row_count;
+      fprintf(stderr,"table_id:%lu, rowkey:\n", cell_info->table_id_);
+      hex_dump(cell_info->row_key_.ptr(), cell_info->row_key_.length());
+    }
+    fprintf(stderr, "%s\n", common::print_cellinfo(cell_info, "CLI_GET"));
+    ++total_count;
+  }
+  fprintf(stderr, "row_count=%d,total_count=%d\n", row_count, total_count);
+}
+
 int scan_test_case(
-  BaseClient& client,
-  const ObServer& server,
-  const uint64_t table_id,
-  const int64_t user_id,
+    BaseClient& client,
+    const ObServer& server,
+    const uint64_t table_id,
+    const int64_t user_id,
   const int8_t item_type,
   const int32_t column_size
   )
@@ -679,7 +702,7 @@ int scan_test_case(
   if ( item_type <= 1)
     encode_i8(end_key, key_size, pos, item_type);
   else
-    encode_i8(end_key, key_size, pos, 0xFF);
+    encode_i8(end_key, key_size, pos, static_cast<int8_t>(0xFF));
 
   memset(end_key + pos, 0xFF, key_size - pos);
 
@@ -716,19 +739,7 @@ int scan_test_case(
   }
   else
   {
-    ObScannerIterator iter;
-    int i = 0;
-    for (iter = scanner.begin(); iter != scanner.end(); iter++)
-    {
-      ObCellInfo cell_info;
-      iter.get_cell(cell_info);
-      fprintf(stderr,"---------------------%d----------------------\n", i);
-      fprintf(stderr,"table_id:%lu\n", cell_info.table_id_);
-      hex_dump(cell_info.row_key_.ptr(), cell_info.row_key_.length());
-      fprintf(stderr,"column_id:%lu\n", cell_info.column_id_);
-      fprintf(stderr,"---------------------%d----------------------\n", i);
-      ++i;
-    }
+    dump_scanner(scanner);
   }
   
   return ret;
@@ -762,8 +773,8 @@ int merge_scan_case(
   memset(end_key, 0, input_key_size);
   if (is_hex)
   {
-    str_to_hex(start_key_ptr, input_key_size, start_key, key_size);
-    str_to_hex(end_key_ptr, input_key_size, end_key, key_size);
+    str_to_hex(start_key_ptr, static_cast<int32_t>(input_key_size), start_key, static_cast<int32_t>(key_size));
+    str_to_hex(end_key_ptr, static_cast<int32_t>(input_key_size), end_key, static_cast<int32_t>(key_size));
   }
   else
   {
@@ -772,12 +783,12 @@ int merge_scan_case(
   }
 
 
-  ObString ob_table_name(0, strlen(table_name_ptr), (char*)table_name_ptr);
+  ObString ob_table_name(0, static_cast<int32_t>(strlen(table_name_ptr)), (char*)table_name_ptr);
 
   ObRange range;
   range.table_id_= 0;
-  range.start_key_.assign_ptr(start_key, key_size);
-  range.end_key_.assign_ptr(end_key, key_size);
+  range.start_key_.assign_ptr(start_key, static_cast<int32_t>(key_size));
+  range.end_key_.assign_ptr(end_key, static_cast<int32_t>(key_size));
   range.border_flag_.set_inclusive_start();
   range.border_flag_.set_inclusive_end();
 
@@ -800,23 +811,7 @@ int merge_scan_case(
   }
   else
   {
-    ObScannerIterator iter;
-    int row_count = 0;
-    for (iter = scanner.begin(); iter != scanner.end(); iter++)
-    {
-      ObCellInfo *cell_info = NULL;
-      bool is_row_changed=false;
-      iter.get_cell(&cell_info, &is_row_changed);
-      if (is_row_changed) row_count++;
-      fprintf(stderr,"---------------------%d----------------------\n", row_count);
-      fprintf(stderr,"table_id:%lu\n", cell_info->table_id_);
-      hex_dump(cell_info->row_key_.ptr(), cell_info->row_key_.length());
-      fprintf(stderr,"column_id:%lu\n", cell_info->column_id_);
-      fprintf(stderr,"---------------------%d----------------------\n", row_count);
-      ++row_count;
-    }
-
-    fprintf(stderr, "row_count = %d\n", row_count);
+    dump_scanner(scanner);
   }
   return ret;
 }
@@ -849,8 +844,8 @@ int scan_test_case_common(
   memset(end_key, 0, input_key_size);
   if (is_hex)
   {
-    str_to_hex(start_key_ptr, input_key_size, start_key, key_size);
-    str_to_hex(end_key_ptr, input_key_size, end_key, key_size);
+    str_to_hex(start_key_ptr, static_cast<int32_t>(input_key_size), start_key, static_cast<int32_t>(key_size));
+    str_to_hex(end_key_ptr, static_cast<int32_t>(input_key_size), end_key, static_cast<int32_t>(key_size));
   }
   else
   {
@@ -863,8 +858,8 @@ int scan_test_case_common(
 
   ObRange range;
   range.table_id_= 0;
-  range.start_key_.assign_ptr(start_key, key_size);
-  range.end_key_.assign_ptr(end_key, key_size);
+  range.start_key_.assign_ptr(start_key, static_cast<int32_t>(key_size));
+  range.end_key_.assign_ptr(end_key, static_cast<int32_t>(key_size));
   range.border_flag_.set_inclusive_start();
   range.border_flag_.set_inclusive_end();
 
@@ -875,7 +870,7 @@ int scan_test_case_common(
 
   input.set(table_id, ob_table_name, range);
   input.set_scan_size(100000);
-  input.add_column(0);
+  input.add_column((uint64_t)0ull);
 
 
   ObScanner scanner;
@@ -889,25 +884,7 @@ int scan_test_case_common(
   }
   else
   {
-    ObScannerIterator iter;
-    int row_count = 0;
-    for (iter = scanner.begin(); iter != scanner.end(); iter++)
-    {
-      ObCellInfo *cell_info = NULL;
-      bool is_row_changed=false;
-      iter.get_cell(&cell_info, &is_row_changed);
-      if (is_row_changed) row_count++;
-      /*
-      fprintf(stderr,"---------------------%d----------------------\n", row_count);
-      fprintf(stderr,"table_id:%lu\n", cell_info->table_id_);
-      hex_dump(cell_info->row_key_.ptr(), cell_info->row_key_.length());
-      fprintf(stderr,"column_id:%lu\n", cell_info->column_id_);
-      fprintf(stderr,"---------------------%d----------------------\n", row_count);
-      */
-      ++row_count;
-    }
-
-    fprintf(stderr, "row_count = %d\n", row_count);
+    dump_scanner(scanner);
   }
   
   return ret;
@@ -953,21 +930,7 @@ int get_test_case(
   }
   else
   {
-    ObScannerIterator iter;
-    int i = 0;
-    for (iter = scanner.begin(); iter != scanner.end(); iter++)
-    {
-      ObCellInfo cell_info;
-      //bool is_row_changed = true;
-      iter.get_cell(cell_info);
-      fprintf(stderr,"---------------------%d----------------------\n", i);
-      fprintf(stderr,"table_id:%lu\n", cell_info.table_id_);
-      hex_dump(cell_info.row_key_.ptr(), cell_info.row_key_.length());
-      fprintf(stderr,"column_id:%lu,value_type:%d\n", cell_info.column_id_, cell_info.value_.get_type());
-      cell_info.value_.dump();
-      fprintf(stderr,"---------------------%d----------------------\n", i);
-      ++i;
-    }
+    dump_scanner(scanner);
   }
   return ret;
 }
@@ -981,7 +944,8 @@ int get_test_case_common(
   )
 {
   ObGetParam input;
-  int32_t key_size = strlen(start_key);
+  int32_t key_size = static_cast<int32_t>(strlen(start_key));
+  UNUSED(column_count);
 
 
   ObCellInfo cell;
@@ -1001,21 +965,7 @@ int get_test_case_common(
   }
   else
   {
-    ObScannerIterator iter;
-    int i = 0;
-    for (iter = scanner.begin(); iter != scanner.end(); iter++)
-    {
-      ObCellInfo cell_info;
-      //bool is_row_changed = true;
-      iter.get_cell(cell_info);
-      fprintf(stderr,"---------------------%d----------------------\n", i);
-      fprintf(stderr,"table_id:%lu\n", cell_info.table_id_);
-      hex_dump(cell_info.row_key_.ptr(), cell_info.row_key_.length());
-      fprintf(stderr,"column_id:%lu,value_type:%d\n", cell_info.column_id_, cell_info.value_.get_type());
-      cell_info.value_.dump();
-      fprintf(stderr,"---------------------%d----------------------\n", i);
-      ++i;
-    }
+    dump_scanner(scanner);
   }
   return ret;
 }
@@ -1035,12 +985,12 @@ int get_test_case_common_hex(
   int64_t pos = 0;
 
   encode_i64(start_key, key_size, pos, key_value);
-  hex_dump(start_key, key_size);
+  hex_dump(start_key, static_cast<int32_t>(key_size));
 
 
   ObCellInfo cell;
   cell.table_id_ = table_id;
-  cell.row_key_.assign((char*)start_key, key_size);
+  cell.row_key_.assign((char*)start_key, static_cast<int32_t>(key_size));
   cell.column_id_ = 0;  //get full row
   input.add_cell(cell);
 
@@ -1055,21 +1005,7 @@ int get_test_case_common_hex(
   }
   else
   {
-    ObScannerIterator iter;
-    int i = 0;
-    for (iter = scanner.begin(); iter != scanner.end(); iter++)
-    {
-      ObCellInfo cell_info;
-      //bool is_row_changed = true;
-      iter.get_cell(cell_info);
-      fprintf(stderr,"---------------------%d----------------------\n", i);
-      fprintf(stderr,"table_id:%lu\n", cell_info.table_id_);
-      hex_dump(cell_info.row_key_.ptr(), cell_info.row_key_.length());
-      fprintf(stderr,"column_id:%lu,value_type:%d\n", cell_info.column_id_, cell_info.value_.get_type());
-      cell_info.value_.dump();
-      fprintf(stderr,"---------------------%d----------------------\n", i);
-      ++i;
-    }
+    dump_scanner(scanner);
   }
   return ret;
 }
@@ -1187,7 +1123,7 @@ bool parse_param(ParamSet& param, char *cmd)
     }
     else if (strstr(p,"t"))
     {
-      param.item_type = strtoll(strtok(NULL,delim),NULL,10);
+      param.item_type = static_cast<int8_t>(strtoll(strtok(NULL,delim),NULL,10));
       continue;
     }
     else if (strstr(p,"i"))
@@ -1356,7 +1292,7 @@ void run_scan_test_case(ParamSet& param, char * cmd)
     {
       TBSYS_LOG(ERROR, "initialize client failed.");
     }
-    scan_test_case(client, cs, param.table_id, param.user_id, param.item_type, param.column_count);
+    scan_test_case(client, cs, param.table_id, param.user_id, static_cast<int8_t>(param.item_type), static_cast<int32_t>(param.column_count));
     client.destory();
     printf("================SCAN TEST DONE===============\n");
   }
@@ -1430,7 +1366,7 @@ char* parse_cmd(const char* cmdlist, char* cmd)
 {
   const char *p = cmdlist;
   while (p && *p++ != ' ');
-  int len = p - cmdlist - 1;
+  int len = static_cast<int32_t>(p - cmdlist - 1);
   strncpy(cmd, cmdlist, len);
   cmd[len] = 0;
   return cmd;
@@ -1438,6 +1374,8 @@ char* parse_cmd(const char* cmdlist, char* cmd)
 
 int main(int argc, char* argv[])
 {
+  UNUSED(argc);
+  UNUSED(argv);
 //  const static int MAX_THREAD_NUM = 10000;
   // pthread_t pid[MAX_THREAD_NUM];
 //  int i = 0;
