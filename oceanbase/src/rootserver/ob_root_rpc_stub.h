@@ -83,6 +83,8 @@ namespace oceanbase
             const int64_t cluster_id, ObDataSourceProxyList& proxy_list, int64_t timeout);
         virtual int fetch_slave_cluster_list(const common::ObServer& ms, const common::ObServer& master_rs,
             common::ObServer* slave_cluster_rs, int64_t& rs_count, int64_t timeout);
+        virtual int fetch_master_cluster_id_list(const common::ObServer &ms,
+            common::ObIArray<int64_t> &cluster_ids, const int64_t timeout);
         virtual int import(const common::ObServer& rs, const common::ObString& table_name,
             const uint64_t table_id, const common::ObString& uri, const int64_t start_time, const int64_t timeout);
         virtual int get_import_status(const common::ObServer& rs, const common::ObString& table_name,
@@ -91,9 +93,12 @@ namespace oceanbase
             const uint64_t table_id, const int32_t status, const int64_t timeout);
         virtual int notify_switch_schema(const common::ObServer& rs, const int64_t timeout);
       private:
+        typedef std::pair<int64_t, common::ObServer> ClusterInfo;
+        typedef common::ObIArray<ClusterInfo> ClusterInfoArray;
+        int fetch_cluster_info(ClusterInfoArray &clusters, const common::ObServer &ms,
+            const int64_t timeout, const common::ObiRole &role);
         int fill_proxy_list(ObDataSourceProxyList& proxy_list, common::ObNewScanner& scanner);
-        int fill_slave_cluster_list(common::ObNewScanner& scanner, const common::ObServer& master_rs,
-            common::ObServer* slave_cluster_rs, int64_t& rs_count);
+        int fill_cluster_info(common::ObNewScanner& scanner, ClusterInfoArray &clusters);
         int get_thread_buffer_(common::ObDataBuffer& data_buffer);
       private:
         static const int32_t DEFAULT_VERSION = 1;

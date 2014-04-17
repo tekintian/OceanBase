@@ -103,7 +103,10 @@ void ob_sql_destroy()
 static void pre_init_()
 {
   ::mallopt(M_MMAP_THRESHOLD, OB_SQL_DEFAULT_MMAP_THRESHOLD);
+
+#ifdef NEED_INIT_MEMORY_POOL
   ob_init_memory_pool();
+#endif
 }
 
 static int init_sql_config_(const ObSQLConfig &config)

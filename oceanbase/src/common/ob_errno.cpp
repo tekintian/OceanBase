@@ -233,6 +233,17 @@ static struct ObStrErrorInit
     ADD_ERROR_STR(OB_DATA_SOURCE_CONCURRENCY_FULL, "Data source concurrency full");
     ADD_ERROR_STR(OB_DATA_SOURCE_WRONG_URI_FORMAT, "Data source wrong URI format");
     ADD_ERROR_STR(OB_SSTABLE_VERSION_UNEQUAL, "SSTable version not equal");
+    ADD_ERROR_STR(OB_CLUSTER_ALREADY_MASTER, "Target cluster is already master");
+    ADD_ERROR_STR(OB_IP_PORT_IS_NOT_SLAVE_CLUSTER, "Target cluster is not slave");
+    ADD_ERROR_STR(OB_CLUSTER_IS_NOT_SLAVE, "Cluster is not slave");
+    ADD_ERROR_STR(OB_CLUSTER_IS_NOT_MASTER, "Cluster is not master");
+    ADD_ERROR_STR(OB_CONFIG_NOT_SYNC, "Config not sync");
+    ADD_ERROR_STR(OB_IP_PORT_IS_NOT_CLUSTER, "Target cluster not exist");
+    ADD_ERROR_STR(OB_MASTER_CLUSTER_NOT_EXIST, "Master cluster not exist");
+    ADD_ERROR_STR(OB_GET_CLUSTER_MASTER_UPS_FAILED, "Fetch master cluster ups list fail");
+    ADD_ERROR_STR(OB_MULTIPLE_MASTER_CLUSTERS_EXIST, "Multiple master clusters exist");
+    ADD_ERROR_STR(OB_MASTER_CLUSTER_ALREADY_EXISTS, "Master cluster already exist");
+    ADD_ERROR_STR(OB_BROADCAST_MASTER_CLUSTER_ADDR_FAIL, "Broadcast master cluster address fail");
 
     //error code for merge server -4000 ---- -5000
     ADD_ERROR_STR(OB_INNER_STAT_ERROR, "Inner state error");     // inner stat check error

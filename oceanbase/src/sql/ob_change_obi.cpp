@@ -93,7 +93,7 @@ int ObChangeObi::open()
       {
         TBSYS_LOG(WARN, "cluster is not yet master, ret=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = set_master_rs_vip_port_to_all_cluster()))
+      else if (OB_SUCCESS != (ret = broadcast_master_cluster()))
       {
         TBSYS_LOG(WARN, "set new master cluster addr to all cluster failed, ret=%d", ret);
       }
@@ -151,14 +151,20 @@ int ObChangeObi::open()
       {
         TBSYS_LOG(WARN, "master ups and slave ups not sync,ret=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = change_cluster_to_slave(master_cluster_index_)))
+      else if (master_cluster_exists_)
       {
-        TBSYS_LOG(WARN, "change master to slave failed, ret=%d", ret);
+        if (OB_SUCCESS != (ret = change_cluster_to_slave(master_cluster_index_)))
+        {
+          TBSYS_LOG(WARN, "change master to slave failed, ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = check_if_cluster_is_slave(master_cluster_index_)))
+        {
+          TBSYS_LOG(WARN, "old master is not yet slave, ret=%d", ret);
+        }
       }
-      else if (OB_SUCCESS != (ret = check_if_cluster_is_slave(master_cluster_index_)))
-      {
-        TBSYS_LOG(WARN, "old master is not yet slave, ret=%d", ret);
-      }
+      
+      if (OB_SUCCESS != ret)
+      {}
       else if (OB_SUCCESS != (ret = waiting_old_slave_ups_sync()))
       {
         TBSYS_LOG(ERROR, "waiting old slave ups sync failed, ret=%d", ret);
@@ -171,7 +177,7 @@ int ObChangeObi::open()
       {
         TBSYS_LOG(WARN, "old slave is not yet master, ret=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = set_master_rs_vip_port_to_all_cluster()))
+      else if (OB_SUCCESS != (ret = broadcast_master_cluster()))
       {
         TBSYS_LOG(WARN, "set new master rs addr to all cluster failed, ret=%d", ret);
       }
@@ -371,8 +377,64 @@ int ObChangeObi::get_rs()
     result.reset();
   }
   context_->session_info_->set_current_result_set(result_set_out_);
+
+  if (OB_SUCCESS == ret && !master_cluster_exists_)
+  {
+    int64_t master_index = -1;
+    ret = get_master_rs_by_rpc(master_index);
+    if (OB_SUCCESS != ret)
+    {
+      if (ret == OB_MULTIPLE_MASTER_CLUSTERS_EXIST)
+      {
+        multi_master_cluster_ = true;
+        ret = OB_SUCCESS;
+      }
+    }
+    else if (master_index >= 0)
+    {
+      master_cluster_exists_ = true;
+      master_cluster_index_ = master_index;
+    }
+  }
+
   return ret;
 }
+
+int ObChangeObi::get_master_rs_by_rpc(int64_t &master_index)
+{
+  int ret = 0;
+  master_index = -1;
+  for (int64_t i = 0; OB_SUCCESS == ret && i < cluster_count_; i++)
+  {
+    ObiRole role;
+    int ret2 = context_->rs_rpc_proxy_->get_obi_role(TIMEOUT, all_rs_ups_[i].master_rs_, role);
+    if (OB_SUCCESS != ret2)
+    {
+      TBSYS_LOG(WARN, "get obi role from [%s] failed, ret %d",
+          to_cstring(all_rs_ups_[i].master_rs_), ret);
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "rootserver %s role %s", to_cstring(all_rs_ups_[i].master_rs_),
+          role.get_role_str());
+      if (role.get_role() == ObiRole::MASTER)
+      {
+        if (master_index < 0)
+        {
+          master_index = i;
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "multi master cluster %s and %s",
+              to_cstring(all_rs_ups_[master_index].master_rs_), to_cstring(all_rs_ups_[i].master_rs_));
+          ret = OB_MULTIPLE_MASTER_CLUSTERS_EXIST;
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 int ObChangeObi::check_new_master_addr()
 {
   int ret = OB_SUCCESS;
@@ -515,6 +577,10 @@ int ObChangeObi::change_cluster_to_slave(int64_t cluster_index)
     ret = OB_INVALID_ARGUMENT;
     TBSYS_LOG(ERROR, "cluster_index=%ld cluster_count_=%ld ret=%d", cluster_index, cluster_count_, ret);
   }
+  else if (OB_SUCCESS != (ret = set_slave_in_inner_table(cluster_index)))
+  {
+    TBSYS_LOG(WARN, "set cluster to slave in __all_cluster table failed, ret %d", ret);
+  }
   else
   {
     ObiRole obi_role;
@@ -538,6 +604,65 @@ int ObChangeObi::change_cluster_to_slave(int64_t cluster_index)
   }
   return ret;
 }
+
+int ObChangeObi::set_slave_in_inner_table(int64_t cluster_index)
+{
+  int ret = OB_SUCCESS;
+  if (cluster_index < 0 || cluster_index >= cluster_count_)
+  {
+    ret = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(ERROR, "cluster_index=%ld cluster_count_=%ld ret=%d", cluster_index, cluster_count_, ret);
+  }
+  else
+  {
+    char sql[OB_MAX_SQL_LENGTH];
+    int n = snprintf(sql, sizeof(sql), "update %s set cluster_role = 2 where cluster_id = %ld and cluster_role != 2",
+        OB_ALL_CLUSTER, all_rs_ups_[cluster_index].cluster_id_);
+    if (n < 0 || n >= static_cast<int>(sizeof(sql)))
+    {
+      ret = OB_BUF_NOT_ENOUGH;
+      TBSYS_LOG(WARN, "snprintf failed, n %d, errno %d", n, n < 0 ? errno : 0);
+    }
+    else
+    {
+      ObString sql_str = ObString::make_string(sql);
+      ObResultSet rs;
+      context_->session_info_->set_current_result_set(&rs);
+      if (OB_SUCCESS != (ret = rs.init()))
+      {
+        TBSYS_LOG(WARN, "result set init failed, ret %d", ret);
+      }
+      else if (OB_SUCCESS != (ret = ObSql::direct_execute(sql_str, rs, *context_)))
+      {
+        TBSYS_LOG(WARN, "direct execute sql %s failed, ret %d", sql, ret);
+      }
+      else if (OB_SUCCESS != (ret = rs.open()))
+      {
+        TBSYS_LOG(WARN, "open result failed, ret %d", ret);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "execute %s success, affect row %ld", sql, rs.get_affected_rows());
+      }
+      int ret2 = rs.close();
+      if (OB_SUCCESS != ret2)
+      {
+        TBSYS_LOG(WARN, "close result failed, ret %d", ret2);
+      }
+      rs.reset();
+      context_->session_info_->set_current_result_set(result_set_out_);
+      if (OB_SUCCESS != ret && force_)
+      {
+        ret = OB_SUCCESS;
+        TBSYS_LOG(INFO, "ignore set cluster %ld to slave error %d for force operation",
+            all_rs_ups_[cluster_index].cluster_id_, ret);
+      }
+    }
+  }
+
+  return ret;
+}
+
 int ObChangeObi::check_if_cluster_is_slave(int64_t cluster_index)
 {
   int ret = OB_SUCCESS;
@@ -675,6 +800,8 @@ int ObChangeObi::set_master_rs_vip_port_to_all_cluster()
   //给自己发
   if (OB_SUCCESS != (ret = context_->rs_rpc_proxy_->set_master_rs_vip_port_to_cluster(target_server_, timeout, target_server_ip_, target_server_.get_port())))
   {
+    // WARN log for mysql warnings.
+    TBSYS_LOG(WARN, "set new master cluster vip[%s] and port[%d] to self cluster[%s] failed, ret=%d", target_server_ip_, target_server_.get_port(), to_cstring(target_server_), ret);
     TBSYS_LOG(ERROR, "set new master cluster vip[%s] and port[%d] to self cluster[%s] failed, ret=%d", target_server_ip_, target_server_.get_port(), to_cstring(target_server_), ret);
   }
   else
@@ -710,6 +837,38 @@ int ObChangeObi::set_master_rs_vip_port_to_all_cluster()
   }
   return ret;
 }
+
+int ObChangeObi::broadcast_master_cluster()
+{
+  int ret = OB_SUCCESS;
+  int retry_times = 1;
+  do {
+    if (OB_SUCCESS != (ret = set_master_rs_vip_port_to_all_cluster()))
+    {
+      TBSYS_LOG(WARN, "set_master_rs_vip_port_to_all_cluster failed, ret %d, master cluster rs [%s:%d",
+          ret, target_server_ip_, target_server_.get_port());
+    }
+  } while (OB_SUCCESS != ret && retry_times-- > 0);
+
+  if (OB_SUCCESS != ret)
+  {
+    // WARN log for mysql warnings.
+    TBSYS_LOG(WARN, "broadcast master cluster rs vip:port [%s:%d] to all clusters failed, ret %d. "
+        "You can try to recover this by re-execute the SQL with force flag or "
+        "execute the follow command on all master rootserver: "
+        " rs_admin -r rs_ip -p rs_port set_config -o master_root_server_ip='%s',master_root_server_port='%d'",
+        target_server_ip_, target_server_.get_port(), ret, target_server_ip_, target_server_.get_port());
+    TBSYS_LOG(ERROR, "broadcast master cluster rs vip:port [%s:%d] to all clusters failed, ret %d. "
+        "You can try to recover this by re-execute the SQL with force flag or "
+        "execute the follow command on all master rootserver: "
+        " rs_admin -r rs_ip -p rs_port set_config -o master_root_server_ip='%s',master_root_server_port='%d'",
+        target_server_ip_, target_server_.get_port(), ret, target_server_ip_, target_server_.get_port());
+    ret = OB_BROADCAST_MASTER_CLUSTER_ADDR_FAIL;
+  }
+
+  return ret;
+}
+
 int ObChangeObi::ms_renew_master_master_ups()
 {
   int ret = OB_SUCCESS;

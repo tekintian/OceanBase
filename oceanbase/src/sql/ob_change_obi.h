@@ -68,12 +68,14 @@ namespace oceanbase
         void get_master_ups();
         int check_new_master_addr();
         int check_ups_log();
+        int set_slave_in_inner_table(int64_t cluster_index);
         int change_cluster_to_slave(int64_t cluster_index);
         int check_if_cluster_is_slave(int64_t cluster_index);
         int waiting_old_slave_ups_sync();
         int change_cluster_to_master(const ObServer &target_server);
         int check_if_cluster_is_master(const ObServer &target_server);
         int set_master_rs_vip_port_to_all_cluster();
+        int broadcast_master_cluster();
         int ms_renew_master_master_ups();
         int update_all_sys_config();
         int waiting_for_all_sys_config_stat_updated();
@@ -81,6 +83,8 @@ namespace oceanbase
         int execute_sql(const ObString &sql);
         int post_check();
         int check_addr();
+        // get master rs index by rs rpc: get_obi_role
+        int get_master_rs_by_rpc(int64_t &master_index);
       private:
         static const int32_t MAX_CLUSTER_COUNT = 32;
         static const int64_t TIMEOUT = 2 * 1000 * 1000;
