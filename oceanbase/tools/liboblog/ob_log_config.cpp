@@ -21,6 +21,8 @@
 #include "tbsys.h"
 #include "ob_log_config.h"
 #include "ob_log_common.h"          // MAX_LOG_FORMATER_THREAD_NUM
+#include <algorithm>                // transform
+#include <ctype.h>                  // tolower
 
 #define LOG_CONFIG_SECTION    "liboblog"
 #define LOG_CONFIG_SECTION_ENTIRE "[liboblog]\n"
@@ -145,23 +147,23 @@ namespace oceanbase
       }
       else
       {
-        is_map_config_ = false;
+        const char *log_fpath = tbsys_config_.getString(LOG_CONFIG_SECTION, LOG_CONFIG_LOG_FPATH);
+        const char *log_level = tbsys_config_.getString(LOG_CONFIG_SECTION, LOG_CONFIG_LOG_LEVEL);
 
         // Start Logger
-        // NOTE: is_map_config_ must be initialized first
-        start_logger_();
+        start_logger_(log_fpath, log_level);
 
+        if (OB_SUCCESS != (ret = init_map_config_(map_config_, tbsys_config_)))
+        {
+          TBSYS_LOG(ERROR, "init_map_config_ fail, ret=%d", ret);
+        }
         // Load configuration
-        if (OB_SUCCESS != (ret = load_config_()))
+        else if (OB_SUCCESS != (ret = load_config_()))
         {
           TBSYS_LOG(WARN, "load config fail, ret=%d config_file=%s", ret, config_file);
         }
         else
         {
-          TBSYS_LOG(INFO, "===================== CONFIG BEGIN =====================");
-          TBSYS_LOG(INFO, "config_file='%s'", config_file);
-          TBSYS_LOG(INFO, "===================== CONFIG END =====================");
-
           inited_ = true;
         }
       }
@@ -176,30 +178,41 @@ namespace oceanbase
     int ObLogConfig::init(const std::map<std::string, std::string>& configs)
     {
       int ret = OB_SUCCESS;
+      const char *log_fpath = NULL;
+      const char *log_level = NULL;
+
       if (inited_)
       {
         ret = OB_INIT_TWICE;
       }
       else
       {
-        map_config_ = configs;
-        is_map_config_ = true;
+        ConfigMap::const_iterator iter = configs.find(LOG_CONFIG_LOG_FPATH);
+        if (configs.end() != iter)
+        {
+          log_fpath = iter->second.c_str();
+        }
+
+        iter = configs.find(LOG_CONFIG_LOG_LEVEL);
+        if (configs.end() != iter)
+        {
+          log_level = iter->second.c_str();
+        }
 
         // Start Logger
-        // NOTE: is_map_config_ must be initialized first
-        start_logger_();
+        start_logger_(log_fpath, log_level);
 
-        // NOTE: We must start logger first, then print config immediately
-        print_map_config_content_(&map_config_);
-
-        // Load configuration
-        if (OB_SUCCESS != (ret = load_config_()))
+        // Initialize map config
+        if (OB_SUCCESS != (ret = init_map_config_(map_config_, configs)))
+        {
+          TBSYS_LOG(ERROR, "init_map_config_ fail, ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = load_config_()))
         {
           TBSYS_LOG(WARN, "load config fail, ret=%d config map=%p", ret, &configs);
         }
         else
         {
-
           inited_ = true;
         }
       }
@@ -215,8 +228,121 @@ namespace oceanbase
     {
       inited_ = false;
       map_config_.clear();
-      is_map_config_ = true;
     }
+
+    int ObLogConfig::init_map_config_(ConfigMap &map_config, tbsys::CConfig &tbsys_config) const
+    {
+      int ret = OB_SUCCESS;
+
+      TBSYS_LOG(INFO, "===================== LIBOBLOG CONFIG BEGIN =====================");
+
+      if (OB_SUCCESS != (ret = init_map_config_section_(map_config, tbsys_config, LOG_CONFIG_SECTION)))
+      {
+        TBSYS_LOG(ERROR, "init_map_config_section_ fail, section=%s, ret=%d", LOG_CONFIG_SECTION, ret);
+      }
+      else if (OB_SUCCESS != (ret = init_map_config_section_(map_config, tbsys_config, LOG_PARTITION_SECTION)))
+      {
+        TBSYS_LOG(ERROR, "init_map_config_section_ fail, section=%s, ret=%d", LOG_PARTITION_SECTION, ret);
+      }
+      else if (OB_SUCCESS != (ret = init_map_config_section_(map_config, tbsys_config, LOG_OBSQL_SECTION)))
+      {
+        TBSYS_LOG(ERROR, "init_map_config_section_ fail, section=%s, ret=%d", LOG_OBSQL_SECTION, ret);
+      }
+
+      TBSYS_LOG(INFO, "===================== LIBOBLOG CONFIG END ======================");
+
+      return ret;
+    }
+
+    int ObLogConfig::init_map_config_section_(ConfigMap &map_config,
+        tbsys::CConfig &tbsys_config,
+        const char *section) const
+    {
+      int ret = OB_SUCCESS;
+      std::vector<std::string> keys;
+      tbsys_config.getSectionKey(section, keys);
+
+      TBSYS_LOG(INFO, "------ CONFIG SECTION [%s]  SIZE=%ld ------", section, keys.size());
+
+      for (uint64_t i = 0; i < keys.size(); i++)
+      {
+        std::string key = keys[i];
+        std::string value = tbsys_config.getString(section, key.c_str());
+
+        if (OB_SUCCESS != (ret = transform_and_add_map_config_(map_config, key, value)))
+        {
+          break;
+        }
+      }
+
+      return ret;
+    }
+
+    int ObLogConfig::transform_and_add_map_config_(ConfigMap &map_config,
+        const std::string &orig_key,
+        const std::string &orig_value) const
+    {
+      int ret = OB_SUCCESS;
+
+      bool changed = false;
+      std::string key = orig_key;
+      std::string value = orig_value;
+
+      // Transform all config key to lower case
+      std::transform(key.begin(), key.end(), key.begin(), tolower);
+      if (0 != strcmp(key.c_str(), orig_key.c_str()))
+      {
+        changed = true;
+      }
+
+      // Transform tb_select value to lower case
+      if (0 == strcmp(key.c_str(), LOG_PARTITION_TB_SELECT))
+      {
+        std::transform(value.begin(), value.end(), value.begin(), tolower);
+
+        if (0 != (strcmp(value.c_str(), orig_value.c_str())))
+        {
+          changed = true;
+        }
+      }
+
+      TBSYS_LOG(INFO, "%s=%s", key.c_str(), value.c_str());
+      if (changed)
+      {
+        TBSYS_LOG(INFO, "ORG CONFIG: %s=%s", orig_key.c_str(), orig_value.c_str());
+      }
+
+      if (! (map_config.insert(ConfigMapPair(key, value))).second)
+      {
+        LOG_AND_ERR(ERROR, "config \"%s\" appears multiple times after ignoring case, Please check it again",
+            key.c_str());
+        ret = OB_INVALID_ARGUMENT;
+      }
+
+      return ret;
+    }
+
+    int ObLogConfig::init_map_config_(ConfigMap &map_config, const std::map<std::string, std::string>& configs) const
+    {
+      int ret = OB_SUCCESS;
+
+      TBSYS_LOG(INFO, "===================== LIBOBLOG CONFIG BEGIN =====================");
+      ConfigMap::const_iterator iter = configs.begin();
+
+      while (iter != configs.end())
+      {
+        if (OB_SUCCESS != (ret = transform_and_add_map_config_(map_config, iter->first, iter->second)))
+        {
+          break;
+        }
+
+        iter++;
+      }
+
+      TBSYS_LOG(INFO, "===================== LIBOBLOG CONFIG END ======================");
+      return ret;
+    }
+
 
     const char *ObLogConfig::format_url_(const char *url)
     {
@@ -320,17 +446,10 @@ namespace oceanbase
 
       const char *ret = NULL;
 
-      if (OB_LIKELY(is_map_config_))
+      ConfigMap::const_iterator iter = map_config_.find(config_name);
+      if (map_config_.end() != iter)
       {
-        ConfigMap::const_iterator iter = map_config_.find(config_name);
-        if (map_config_.end() != iter)
-        {
-          ret = iter->second.c_str();
-        }
-      }
-      else
-      {
-        ret = const_cast<ObLogConfig&>(*this).tbsys_config_.getString(config_section, config_name);
+        ret = iter->second.c_str();
       }
 
       return ret;
@@ -341,39 +460,17 @@ namespace oceanbase
       OB_ASSERT(NULL != config_section && NULL != config_name);
       int ret = invalid_value;
 
-      if (OB_LIKELY(is_map_config_))
+      ConfigMap::const_iterator iter = map_config_.find(config_name);
+      if (map_config_.end() != iter)
       {
-        ConfigMap::const_iterator iter = map_config_.find(config_name);
-        if (map_config_.end() != iter)
-        {
-          ret = tbsys::CStringUtil::strToInt(iter->second.c_str(), invalid_value);
-        }
-      }
-      else
-      {
-        ret = const_cast<ObLogConfig&>(*this).tbsys_config_.getInt(config_section, config_name, invalid_value);
+        ret = tbsys::CStringUtil::strToInt(iter->second.c_str(), invalid_value);
       }
 
       return ret;
     }
 
-    void ObLogConfig::print_map_config_content_(const ConfigMap *map)
+    void ObLogConfig::start_logger_(const char *log_fpath, const char *log_level)
     {
-      OB_ASSERT(NULL != map);
-
-      TBSYS_LOG(INFO, "===================== LIBOBLOG CONFIG BEGIN =====================");
-      ConfigMap::const_iterator iter = map->begin();
-      while (iter != map->end())
-      {
-        TBSYS_LOG(INFO, "%s=%s", iter->first.c_str(), iter->second.c_str());
-        iter++;
-      }
-      TBSYS_LOG(INFO, "===================== LIBOBLOG CONFIG END ======================");
-    }
-
-    void ObLogConfig::start_logger_()
-    {
-      const char *log_fpath = get_string_config_(LOG_CONFIG_SECTION, LOG_CONFIG_LOG_FPATH);
       log_fpath = (NULL != log_fpath ? log_fpath : DEFAULT_LOG_FPATH);
 
       char *p = strrchr(const_cast<char*>(log_fpath), '/');
@@ -386,7 +483,6 @@ namespace oceanbase
       }
       TBSYS_LOGGER.setFileName(log_fpath, true);
 
-      const char *log_level = get_string_config_(LOG_CONFIG_SECTION, LOG_CONFIG_LOG_LEVEL);
       log_level = (NULL != log_level) ? log_level : DEFAULT_LOG_LEVEL;
       TBSYS_LOGGER.setLogLevel(log_level);
 
@@ -474,20 +570,17 @@ namespace oceanbase
             TBSYS_LOG(ERROR, "clusterAddress is not provided in cluster URL: %s, invalid argument", cluster_url);
             ret = OB_INVALID_ARGUMENT;
           }
-          else if (is_map_config_)
+          // Add clusterAddress configuration into map_config_
+          else if (! (map_config_.insert(ConfigMapPair(LOG_CONFIG_OB_ADDR, cluster_address))).second)
           {
-            // Add clusterAddress configuration into map_config_
-            if (! (map_config_.insert(ConfigMapPair(LOG_CONFIG_OB_ADDR, cluster_address))).second)
-            {
-              TBSYS_LOG(ERROR, "\"%s\" exists both in configuration and cluster URL(%s). Please check it again",
-                  LOG_CONFIG_OB_ADDR, cluster_url);
-              ret = OB_INVALID_ARGUMENT;
-            }
-            else
-            {
-              TBSYS_LOG(INFO, "load string config from cluster_url succ, %s=%s",
-                  LOG_CONFIG_OB_ADDR, cluster_address);
-            }
+            TBSYS_LOG(ERROR, "\"%s\" exists both in configuration and cluster URL(%s). Please check it again",
+                LOG_CONFIG_OB_ADDR, cluster_url);
+            ret = OB_INVALID_ARGUMENT;
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "load string config from cluster_url succ, %s=%s",
+                LOG_CONFIG_OB_ADDR, cluster_address);
           }
         }
       }

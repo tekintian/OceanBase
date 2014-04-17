@@ -12,6 +12,7 @@ LDADD = $(top_builddir)/src/updateserver/libupdateserver.a \
 	$(top_builddir)/src/sstable/libsstable.a \
 	$(top_builddir)/src/common/compress/libcomp.a \
 	$(top_builddir)/src/common/libcommon.a \
+	$(top_builddir)/src/common/timezone/libtimezone.a \
 	$(top_builddir)/src/common/btree/libbtree.a \
 	${TBLIB_ROOT}/lib/libtbnet.a \
 	${EASY_LIB_PATH}/libeasy.a \

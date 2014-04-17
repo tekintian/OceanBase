@@ -59,11 +59,11 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (ret = config_.init(config)))
       {
-        TBSYS_LOG(WARN, "config=%s init fail, ret=%d", config, ret);
+        TBSYS_LOG(ERROR, "config=%s init fail, ret=%d", config, ret);
       }
       else if (OB_SUCCESS != (ret = init_internal_(checkpoint)))
       {
-        TBSYS_LOG(WARN, "initialize components fail, checkpoint=%lu, ret=%d", checkpoint, ret);
+        TBSYS_LOG(ERROR, "initialize components fail, checkpoint=%lu, ret=%d", checkpoint, ret);
       }
       else
       {
@@ -82,11 +82,11 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (ret = config_.init(configs)))
       {
-        TBSYS_LOG(WARN, "config init with map configurations fail, ret=%d", ret);
+        TBSYS_LOG(ERROR, "config init with map configurations fail, ret=%d", ret);
       }
       else if (OB_SUCCESS != (ret = init_internal_(checkpoint)))
       {
-        TBSYS_LOG(WARN, "initialize components fail, checkpoint=%lu, ret=%d", checkpoint, ret);
+        TBSYS_LOG(ERROR, "initialize components fail, checkpoint=%lu, ret=%d", checkpoint, ret);
       }
       else
       {
@@ -216,15 +216,15 @@ namespace oceanbase
 
       if (OB_SQL_SUCCESS != (ret = init_obsql_()))
       {
-        TBSYS_LOG(WARN, "init_obsql fail, ret=%d", ret);
+        TBSYS_LOG(ERROR, "init_obsql fail, ret=%d", ret);
       }
       else if (OB_SUCCESS != (ret = construct_components_()))
       {
-        TBSYS_LOG(WARN, "construct components fail, ret=%d", ret);
+        TBSYS_LOG(ERROR, "construct components fail, ret=%d", ret);
       }
       else if (OB_SUCCESS != (ret = init_components_(checkpoint)))
       {
-        TBSYS_LOG(WARN, "init components fail, ret=%d", ret);
+        TBSYS_LOG(ERROR, "init components fail, ret=%d", ret);
       }
       else
       {
