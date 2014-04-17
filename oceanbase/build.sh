@@ -7,9 +7,9 @@ case "x$1" in
 xinit)
 	set -x
 	aclocal
-	libtoolize --force --copy
+	libtoolize --force --copy --automake
 	autoconf --force
-	automake --foreign --copy --add-missing
+	automake --foreign --copy --add-missing -Woverride
 	;;
 xclean)
 	echo 'cleaning...'
@@ -26,7 +26,6 @@ xclean)
 	echo 'done'
 	;;
 *)
-	./configure 
+	./configure
 	;;
 esac
-
