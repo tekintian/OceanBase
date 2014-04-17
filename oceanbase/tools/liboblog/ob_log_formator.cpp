@@ -1295,6 +1295,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       const char *vstr = NULL;
       std::string *vstr_str = NULL;
+      int64_t vstr_len = 0;
 
       if (obj.is_null())
       {
@@ -1303,7 +1304,7 @@ namespace oceanbase
       }
       else
       {
-        if (NULL == (vstr = value2str_(obj)))
+        if (NULL == (vstr = value2str_(obj, vstr_len)))
         {
           TBSYS_LOG(WARN, "trans value to string fail, column_index=%d %s",
               column_index, print_obj(obj));
@@ -1316,7 +1317,7 @@ namespace oceanbase
         }
         else
         {
-          *vstr_str = vstr;
+          (*vstr_str).assign(vstr, vstr_len);
         }
       }
 
@@ -1328,7 +1329,7 @@ namespace oceanbase
       return ret;
     }
 
-    const char *ObLogDenseFormator::value2str_(const ObObj &v)
+    const char *ObLogDenseFormator::value2str_(const ObObj &v, int64_t &v_len)
     {
       static const int64_t DEFAULT_VALUE_STR_BUFFER_SIZE = 65536;
       static __thread char buffer[DEFAULT_VALUE_STR_BUFFER_SIZE];
@@ -1343,6 +1344,7 @@ namespace oceanbase
             && DEFAULT_VALUE_STR_BUFFER_SIZE > snprintf(buffer, DEFAULT_VALUE_STR_BUFFER_SIZE, "%.*s", str.length(), str.ptr()))
         {
           ret = buffer;
+          v_len = str.length();
         }
         else
         {
@@ -1357,6 +1359,7 @@ namespace oceanbase
         {
           buffer[ret_size] = '\0';
           ret = buffer;
+          v_len = ret_size;
         }
       }
       return ret;

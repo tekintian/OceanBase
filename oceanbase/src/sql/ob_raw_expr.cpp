@@ -139,7 +139,7 @@ void ObConstRawExpr::print(FILE* fp, int32_t level) const
     {
       ObString str;
       value_.get_varchar(str);
-      fprintf(fp, "%.*s\n", str.length(), str.ptr());
+      fprintf(fp, "'%.*s' length=%d\n", str.length(), str.ptr(), str.length());
       break;
     }
     case T_DATE:
