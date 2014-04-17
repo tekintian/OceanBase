@@ -60,7 +60,7 @@ OceanBase client library
 chmod u+x build.sh
 ./build.sh init
 # use the following line for local bulid
-./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes CPPFLAGS="-I/home/xiaojun.chengxj/usr_oceanbase/include -I/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.0.x86_64/include/linux -I/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.0.x86_64/include/" LDFLAGS="-L/home/xiaojun.chengxj/usr_oceanbase/lib -L/home/xiaojun.chengxj/usr_oceanbase/lib64"
+./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes CPPFLAGS="-I/home/xiaojun.chengxj/usr_oceanbase/include -I/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.0.x86_64/include/linux -I/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.0.x86_64/include/" LDFLAGS="-L/home/xiaojun.chengxj/usr_oceanbase/lib -L/home/xiaojun.chengxj/usr_oceanbase/lib64" --with-svnfile
 make %{?_smp_mflags}
 
 %install

@@ -65,7 +65,7 @@ OceanBase client library
 %build
 chmod u+x build.sh
 ./build.sh init
-./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes --with-tblib-root=/opt/csr/common --with-easy-root=/usr --with-easy-lib-path=/usr/lib64 --with-drc-root=/home/ds
+./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes --with-tblib-root=/opt/csr/common --with-easy-root=/usr --with-easy-lib-path=/usr/lib64 --with-drc-root=/home/ds --with-svnfile
 make %{?_smp_mflags}
 
 %install

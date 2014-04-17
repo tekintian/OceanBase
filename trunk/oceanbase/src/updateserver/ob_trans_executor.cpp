@@ -39,12 +39,6 @@ namespace oceanbase
 {
   namespace updateserver
   {
-    static int64_t get_slow_query_time_limit(int priority)
-    {
-      return PriorityPacketQueueThread::LOW_PRIV == priority? (int64_t)UPS.get_param().low_prio_slow_query_time_limit: (int64_t)UPS.get_param().normal_prio_slow_query_time_limit;
-    }
-#define BEGIN_SAMPLE_SLOW_QUERY(session_ctx) if (REACH_TIME_INTERVAL(100 * 1000)) { session_ctx->get_tlog_buffer().force_log_ = true; }
-#define END_SAMPLE_SLOW_QUERY(session_ctx, pkt) if (session_ctx->is_slow_query(get_slow_query_time_limit(pkt.get_packet_priority()))) { session_ctx->get_tlog_buffer().force_print_ = true; }
     class FakeWriteGuard
     {
       public:
@@ -318,7 +312,7 @@ namespace oceanbase
         case OB_UPS_SHOW_SESSIONS:
         case OB_UPS_KILL_SESSION:
         case OB_END_TRANSACTION:
-          ret = TransHandlePool::push(&task, task.pkt.get_req_sign(), task.pkt.get_packet_priority());
+          ret = TransHandlePool::push(&task);
           break;
         case OB_SEND_LOG:
         case OB_FAKE_WRITE_FOR_KEEP_ALIVE:
@@ -446,9 +440,9 @@ namespace oceanbase
               && (process_timeout < 0 || process_timeout < (tbsys::CTimeUtil::getTime() - task->pkt.get_receive_ts())))
       {
         OB_STAT_INC(UPDATESERVER, UPS_STAT_PACKET_LONG_WAIT_COUNT, 1);
-        ret = (OB_SUCCESS == task->last_process_retcode) ? OB_RESPONSE_TIME_OUT : task->last_process_retcode;
         TBSYS_LOG(WARN, "process timeout=%ld not enough cur_time=%ld receive_time=%ld packet_code=%d src=%s",
                   process_timeout, tbsys::CTimeUtil::getTime(), task->pkt.get_receive_ts(), task->pkt.get_packet_code(), inet_ntoa_r(task->src_addr));
+        ret = OB_PROCESS_TIMEOUT;
       }
       else
       {
@@ -465,15 +459,12 @@ namespace oceanbase
         if ((OB_SUCCESS != ret && !IS_SQL_ERR(ret) && OB_BEGIN_TRANS_LOCKED != ret)
             || (OB_SUCCESS != thread_errno() && !IS_SQL_ERR(thread_errno()) && OB_BEGIN_TRANS_LOCKED != thread_errno()))
         {
-          if (REACH_TIME_INTERVAL(1 * 1000 * 1000))
-          {
-            TBSYS_LOG(WARN, "process fail ret=%d pcode=%d src=%s",
-                      (OB_SUCCESS != ret) ? ret : thread_errno(), task->pkt.get_packet_code(), inet_ntoa_r(task->src_addr));
-          }
+          TBSYS_LOG(WARN, "process fail ret=%d pcode=%d src=%s",
+                    (OB_SUCCESS != ret) ? ret : thread_errno(), task->pkt.get_packet_code(), inet_ntoa_r(task->src_addr));
         }
         if (OB_SUCCESS != ret)
         {
-          UPS.response_result(ret, task->last_process_err_msg_ptr, task->pkt);
+          UPS.response_result(ret, task->pkt);
         }
         if (release_task)
         {
@@ -547,9 +538,7 @@ namespace oceanbase
         if (OB_BEGIN_TRANS_LOCKED == ret)
         {
           int tmp_ret = OB_SUCCESS;
-          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task,
-                  task.pkt.get_req_sign(),
-                  task.pkt.get_packet_priority())))
+          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task)))
           {
             ret = tmp_ret;
           }
@@ -562,7 +551,6 @@ namespace oceanbase
       else
       {
         LOG_SESSION("mutator start", session_ctx, task);
-        session_ctx->set_conflict_session_id(task.last_conflict_session_id);
         session_ctx->set_start_handle_time(tbsys::CTimeUtil::getTime());
         session_ctx->set_stmt_start_time(task.pkt.get_receive_ts());
         session_ctx->set_stmt_timeout(process_timeout);
@@ -586,10 +574,7 @@ namespace oceanbase
               && !session_ctx->is_stmt_expired())
           {
             int tmp_ret = OB_SUCCESS;
-            task.last_conflict_session_id = session_ctx->get_conflict_session_id();
-            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task,
-                                                               0,
-                    task.pkt.get_packet_priority())))
+            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task)))
             {
               TBSYS_LOG(WARN, "push back task fail, ret=%d conflict_processor_index=%ld task=%p",
                         tmp_ret, session_ctx->get_conflict_processor_index(), &task);
@@ -670,9 +655,7 @@ namespace oceanbase
         if (OB_BEGIN_TRANS_LOCKED == ret)
         {
           int tmp_ret = OB_SUCCESS;
-          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task,
-                  task.pkt.get_req_sign(),
-                  task.pkt.get_packet_priority())))
+          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task)))
           {
             ret = tmp_ret;
           }
@@ -800,17 +783,18 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "Session has been killed, error %d, \'%s\'", ret, to_cstring(phy_plan.get_trans_id()));
         }
-        else if (session_ctx->get_stmt_start_time() > task.pkt.get_receive_ts())
+        else if (session_ctx->get_stmt_start_time() >= task.pkt.get_receive_ts())
         {
           TBSYS_LOG(ERROR, "maybe an expired request, will skip it, last_stmt_start_time=%ld receive_ts=%ld",
                     session_ctx->get_stmt_start_time(), task.pkt.get_receive_ts());
-          ret = (OB_SUCCESS == task.last_process_retcode) ? OB_STMT_EXPIRED : task.last_process_retcode;
+          ret = OB_STMT_EXPIRED;
         }
         else
         {
           CLEAR_TRACE_BUF(session_ctx->get_tlog_buffer());
           session_ctx->reset_stmt();
           task.sid = phy_plan.get_trans_id();
+          LOG_SESSION("session stmt", session_ctx, task);
         }
       }
       else
@@ -821,10 +805,7 @@ namespace oceanbase
           if (OB_BEGIN_TRANS_LOCKED == ret)
           {
             int tmp_ret = OB_SUCCESS;
-            task.last_process_retcode = ret;
-            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task,
-                    task.pkt.get_req_sign(),
-                    task.pkt.get_packet_priority())))
+            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task)))
             {
               ret = tmp_ret;
             }
@@ -844,6 +825,7 @@ namespace oceanbase
           {
             session_ctx->get_ups_result().set_trans_id(task.sid);
           }
+          LOG_SESSION("start_trans", session_ctx, task);
         }
       }
       if (OB_SUCCESS != ret)
@@ -851,10 +833,7 @@ namespace oceanbase
       else
       {
         int64_t cur_time = tbsys::CTimeUtil::getTime();
-        BEGIN_SAMPLE_SLOW_QUERY(session_ctx);
-        LOG_SESSION("start_trans", session_ctx, task);
         OB_STAT_INC(UPDATESERVER, UPS_STAT_TRANS_WTIME, cur_time - task.pkt.get_receive_ts());
-        session_ctx->set_conflict_session_id(task.last_conflict_session_id);
         session_ctx->set_last_proc_time(cur_time);
 
         session_ctx->set_start_handle_time(tbsys::CTimeUtil::getTime());
@@ -901,19 +880,15 @@ namespace oceanbase
           {
             int tmp_ret = OB_SUCCESS;
             uint32_t session_descriptor = session_ctx->get_session_descriptor();
-            int64_t conflict_processor_index = 0;
+            int64_t conflict_processor_index = session_ctx->get_conflict_processor_index();
+            session_ctx->set_stmt_start_time(0);
             if (!with_sid)
             {
               end_session_ret = ret;
             }
-            task.last_conflict_session_id = session_ctx->get_conflict_session_id();
             session_ctx = NULL;
             session_guard.revert();
-            task.last_process_retcode = ret;
-            task.set_last_err_msg(ob_get_err_msg().ptr());
-            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task,
-                    conflict_processor_index,
-                    task.pkt.get_packet_priority())))
+            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task)))
             {
               TBSYS_LOG(WARN, "push back task fail, ret=%d conflict_processor_index=%ld task=%p",
                         tmp_ret, conflict_processor_index, &task);
@@ -967,7 +942,6 @@ namespace oceanbase
           OB_STAT_INC(UPDATESERVER, get_stat_num(session_ctx->get_priority(), APPLY, COUNT), 1);
           OB_STAT_INC(UPDATESERVER, get_stat_num(session_ctx->get_priority(), APPLY, QTIME), session_ctx->get_start_handle_time() - session_ctx->get_stmt_start_time());
           OB_STAT_INC(UPDATESERVER, get_stat_num(session_ctx->get_priority(), APPLY, TIMEU), tbsys::CTimeUtil::getTime() - session_ctx->get_start_handle_time());
-          END_SAMPLE_SLOW_QUERY(session_ctx, task.pkt);
         }
         else
         {
@@ -982,7 +956,6 @@ namespace oceanbase
             OB_STAT_INC(UPDATESERVER, get_stat_num(session_ctx->get_priority(), APPLY, COUNT), 1);
             OB_STAT_INC(UPDATESERVER, get_stat_num(session_ctx->get_priority(), APPLY, QTIME), session_ctx->get_start_handle_time() - session_ctx->get_stmt_start_time());
             OB_STAT_INC(UPDATESERVER, get_stat_num(session_ctx->get_priority(), APPLY, TIMEU), tbsys::CTimeUtil::getTime() - session_ctx->get_start_handle_time());
-            END_SAMPLE_SLOW_QUERY(session_ctx, task.pkt);
 
             cur_time = tbsys::CTimeUtil::getTime();
             OB_STAT_INC(UPDATESERVER, UPS_STAT_TRANS_HTIME, cur_time - session_ctx->get_last_proc_time());
@@ -1050,11 +1023,8 @@ namespace oceanbase
       }
       else if (!UPS.can_serve_read_req(get_param.get_is_read_consistency(), get_param.get_version_range().get_query_version()))
       {
-        if (REACH_TIME_INTERVAL(10 * 1000 * 1000))
-        {
-          TBSYS_LOG(WARN, "the scan request require consistency, ObiRole:%s RoleMgr:%s, query_version=%ld",
-                    UPS.get_obi_role().get_role_str(), UPS.get_role_mgr().get_role_str(), get_param.get_version_range().get_query_version());
-        }
+        TBSYS_LOG(WARN, "the scan request require consistency, ObiRole:%s RoleMgr:%s, query_version=%ld",
+                  UPS.get_obi_role().get_role_str(), UPS.get_role_mgr().get_role_str(), get_param.get_version_range().get_query_version());
         ret = OB_NOT_MASTER;
       }
       else if (OB_SUCCESS != (ret = session_mgr_.begin_session(ST_READ_ONLY, pkt.get_receive_ts(), process_timeout, process_timeout, session_descriptor)))
@@ -1074,7 +1044,6 @@ namespace oceanbase
       }
       else
       {
-        BEGIN_SAMPLE_SLOW_QUERY(session_ctx);
         FILL_TRACE_BUF(session_ctx->get_tlog_buffer(), "start handle get, packet wait=%ld start_time=%ld timeout=%ld src=%s",
                       tbsys::CTimeUtil::getTime() - pkt.get_receive_ts(),
                       pkt.get_receive_ts(),
@@ -1118,7 +1087,6 @@ namespace oceanbase
         OB_STAT_INC(UPDATESERVER, UPS_STAT_GET_QTIME, session_ctx->get_start_handle_time() - session_ctx->get_session_start_time());
         //OB_STAT_INC(UPDATESERVER, UPS_STAT_NL_GET_TIMEU, session_ctx->get_session_timeu());
         OB_STAT_INC(UPDATESERVER, get_stat_num(session_ctx->get_priority(), GET, TIMEU), session_ctx->get_session_timeu());
-        END_SAMPLE_SLOW_QUERY(session_ctx, pkt);
         thread_read_complete();
         session_ctx->set_last_active_time(tbsys::CTimeUtil::getTime());
         session_mgr_.revert_ctx(session_descriptor);
@@ -1154,11 +1122,8 @@ namespace oceanbase
       }
       else if (!UPS.can_serve_read_req(scan_param.get_is_read_consistency(), scan_param.get_version_range().get_query_version()))
       {
-        if (REACH_TIME_INTERVAL(10 * 1000 * 1000))
-        {
-          TBSYS_LOG(WARN, "the scan request require consistency, ObiRole:%s RoleMgr:%s, query_version=%ld",
-                    UPS.get_obi_role().get_role_str(), UPS.get_role_mgr().get_role_str(), scan_param.get_version_range().get_query_version());
-        }
+        TBSYS_LOG(WARN, "the scan request require consistency, ObiRole:%s RoleMgr:%s, query_version=%ld",
+                  UPS.get_obi_role().get_role_str(), UPS.get_role_mgr().get_role_str(), scan_param.get_version_range().get_query_version());
         ret = OB_NOT_MASTER;
       }
       else if (OB_SUCCESS != (ret = session_mgr_.begin_session(ST_READ_ONLY, pkt.get_receive_ts(), process_timeout, process_timeout, session_descriptor)))
@@ -1178,7 +1143,6 @@ namespace oceanbase
       }
       else
       {
-        BEGIN_SAMPLE_SLOW_QUERY(session_ctx);
         FILL_TRACE_BUF(session_ctx->get_tlog_buffer(), "start handle scan, packet wait=%ld start_time=%ld timeout=%ld src=%s",
                       tbsys::CTimeUtil::getTime() - pkt.get_receive_ts(),
                       pkt.get_receive_ts(),
@@ -1233,7 +1197,6 @@ namespace oceanbase
         OB_STAT_INC(UPDATESERVER, UPS_STAT_SCAN_QTIME, session_ctx->get_start_handle_time() - session_ctx->get_session_start_time());
         //OB_STAT_INC(UPDATESERVER, UPS_STAT_NL_SCAN_TIMEU, session_ctx->get_session_timeu());
         OB_STAT_INC(UPDATESERVER, get_stat_num(session_ctx->get_priority(), SCAN, TIMEU), session_ctx->get_session_timeu());
-        END_SAMPLE_SLOW_QUERY(session_ctx, pkt);
         thread_read_complete();
         session_ctx->set_last_active_time(tbsys::CTimeUtil::getTime());
         session_mgr_.revert_ctx(session_descriptor);
@@ -1350,7 +1313,7 @@ namespace oceanbase
 
     int64_t TransExecutor::get_commit_queue_len()
     {
-      return session_mgr_.get_trans_seq().get_seq() - TransCommitThread::task_queue_.get_seq() + 1;
+      return session_mgr_.get_trans_seq().get_seq() - TransCommitThread::task_queue_.get_seq();
     }
 
     int64_t TransExecutor::get_seq(void* ptr)
@@ -1391,11 +1354,6 @@ namespace oceanbase
             session_ctx->set_trans_id(trans_id);
             session_ctx->get_checksum();
           }
-        }
-        if (OB_SUCCESS == ret && task.sid.is_valid()
-            && OB_SUCCESS != (ret = session_mgr_.precommit(task.sid.descriptor_)))
-        {
-          TBSYS_LOG(ERROR, "precommit(%s)=>%d", to_cstring(task.sid), ret);
         }
         if (OB_SUCCESS != ret)
         {
