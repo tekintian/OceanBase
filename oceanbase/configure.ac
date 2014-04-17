@@ -1,5 +1,5 @@
     AC_INIT([OceanBase],
-            [0.4.2.16],
+            [0.4.2.17],
             [qushan@taobao.com],
             [oceanbase],
 			[http://oceanbase.taobao.org/])
@@ -9,7 +9,7 @@
 
     AC_PROG_LIBTOOL
     AC_PROG_RANLIB
-    AM_INIT_AUTOMAKE(oceanbase, 0.4.2.16)
+    AM_INIT_AUTOMAKE(oceanbase, 0.4.2.17)
     ac_default_prefix=${HOME}/oceanbase_bin# for convenience
     AC_PROG_CXX
     AC_LANG([C++])
@@ -166,9 +166,19 @@
     dnl see whether subversion is installed
     AC_PATH_PROG(svnversioncommand, svnversion)
 
+    AC_ARG_WITH([svnfile],
+           AS_HELP_STRING([--with-svnfile],
+		          [use svnfile svn_dist_version instead of svnversion -n (default is NO)]),
+	   		  [
+			    if test "$withval" = "yes"; then
+			    	use_svnfile=yes
+			    fi
+			  ],
+			  [use_svnfile=no]
+	   )
     dnl use svnversion to record the current repository revision only if
     dnl subversion is installed and we are in a working copy
-    if test "X$svnversioncommand" = "X" || test `$svnversioncommand -n '.'` = "exported"; then
+    if test "X$svnversioncommand" = "X" || test "X$use_svnfile" = "Xyes"; then
         mysvnversion="cat \$(top_srcdir)/svn_dist_version"
         AM_CONDITIONAL([HAVESVNWC], false)
     else
