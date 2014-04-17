@@ -828,11 +828,6 @@ namespace oceanbase
           TBSYS_LOG(WARN, "createColMeta fails, col_name=%s", column_schema.get_name());
           ret = OB_ALLOCATE_MEMORY_FAILED;
         }
-        else if (NULL == (default_value = get_default_value_(column_schema)))
-        {
-          TBSYS_LOG(WARN, "get default value fail, col_name=%s", column_schema.get_name());
-          ret = OB_ERR_UNEXPECTED;
-        }
         else if (OB_SUCCESS != (ret = type_trans_mysql_(column_schema.get_type(), mysql_type)))
         {
           TBSYS_LOG(WARN, "type trans to mysql fail, ret=%d ob_type=%d, mysql_type=%d", ret, column_schema.get_type(), mysql_type);
@@ -845,6 +840,7 @@ namespace oceanbase
           col_meta->setSigned(true);
           col_meta->setIsPK(rowkey_info.is_rowkey_column(column_schema.get_id()));
           col_meta->setNotNull(column_schema.is_nullable());
+          // FIXME: 0.4 does not support default value. All default values are set to null type
           col_meta->setDefault(default_value);
           col_meta->setEncoding(DEFAULT_ENCODING);
           // Do not need
@@ -903,25 +899,6 @@ namespace oceanbase
         table_meta.setPKs(pks.c_str());
       }
 
-      return ret;
-    }
-
-    const char *ObLogMetaManager::get_default_value_(const ObColumnSchemaV2 &column_schema)
-    {
-      // OB does not support default value now, all are null type
-      // TODO: Get the real default value when OB supports default value.
-      UNUSED(column_schema);
-      static const int64_t DEFAULT_VALUE_STR_BUFFER_SIZE = 16;
-      static __thread char buffer[DEFAULT_VALUE_STR_BUFFER_SIZE];
-      const char *ret = NULL;
-      ObObj v;
-      v.set_null();
-      int64_t ret_size = 0;
-      if (OB_SUCCESS == obj_cast(v, ObVarcharType, buffer, DEFAULT_VALUE_STR_BUFFER_SIZE - 1, ret_size))
-      {
-        buffer[ret_size] = '\0';
-        ret = buffer;
-      }
       return ret;
     }
 

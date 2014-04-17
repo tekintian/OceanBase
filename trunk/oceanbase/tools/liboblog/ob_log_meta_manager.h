@@ -305,7 +305,6 @@ namespace oceanbase
             const common::ObTableSchema &table_schema,
             ITableMeta &table_meta);
 
-        const char *get_default_value_(const common::ObColumnSchemaV2 &column_schema);
         int type_trans_mysql_(const common::ObObjType ob_type, int &mysql_type);
       private:
         bool inited_;

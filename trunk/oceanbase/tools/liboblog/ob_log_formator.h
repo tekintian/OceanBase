@@ -340,7 +340,10 @@ namespace oceanbase
         int fill_row_value_obj_(RowValue *row_value, const common::ObObj &obj, const int32_t column_index);
 
         /// @brief Convert ObObj to c-style string
-        static const char *value2str_(const common::ObObj &v);
+        /// @param v target ObObj
+        /// @param v_len target object length
+        /// @retval target c-style string
+        static const char *value2str_(const common::ObObj &v, int64_t &v_len);
 
         /// @brief Construct Binlog Record based on ObLogDmlStmt and RowValue
         /// @param[out] returned Binlog Record

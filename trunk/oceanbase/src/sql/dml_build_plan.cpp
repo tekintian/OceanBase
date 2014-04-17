@@ -339,8 +339,10 @@ int resolve_expr(
     case T_SYSTEM_VARIABLE:
     case T_TEMP_VARIABLE:
     {
+      ObString str_val;
+      str_val.assign_ptr(const_cast<char*>(node->str_value_), static_cast<int32_t>(node->value_));
       ObString str;
-      if (OB_SUCCESS != (ret = ob_write_string(*name_pool, ObString::make_string(node->str_value_), str)))
+      if (OB_SUCCESS != (ret = ob_write_string(*name_pool, str_val, str)))
       {
         TBSYS_LOG(WARN, "out of memory");
         break;
