@@ -1559,49 +1559,109 @@ int ObRootRpcStub::fill_proxy_list(ObDataSourceProxyList& proxy_list, common::Ob
 int ObRootRpcStub::fetch_slave_cluster_list(const common::ObServer& ms,
     const ObServer& master_rs, ObServer* slave_cluster_rs, int64_t& rs_count, int64_t timeout)
 {
+  ObSEArray<ClusterInfo, OB_MAX_CLUSTER_COUNT> clusters;
+  ObiRole role;
+  role.set_role(ObiRole::SLAVE);
+  int ret = fetch_cluster_info(clusters, ms, timeout, role);
+  if (OB_SUCCESS != ret)
+  {
+    TBSYS_LOG(WARN, "fetch cluster info failed, ret %d, ms %s", ret, to_cstring(ms));
+  }
+  else
+  {
+    for (int64_t i = 0; OB_SUCCESS == ret && i < clusters.count(); i++)
+    {
+      if (i >= rs_count)
+      {
+        TBSYS_LOG(WARN, "slave cluster buffer not enough, buffer size %ld, need size %ld",
+            rs_count, clusters.count());
+        ret = OB_BUF_NOT_ENOUGH;
+      }
+      else if (master_rs == clusters.at(i).second)
+      {
+        TBSYS_LOG(ERROR, "master_rs's cluster_role should not be 2! ip=%s", to_cstring(master_rs));
+        ret = OB_RS_STATE_NOT_ALLOW;
+      }
+      else
+      {
+        slave_cluster_rs[i] = clusters.at(i).second;
+      }
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    rs_count = clusters.count();
+  }
+  return ret;
+}
+
+int ObRootRpcStub::fetch_master_cluster_id_list(const common::ObServer &ms,
+    ObIArray<int64_t> &cluster_ids, const int64_t timeout)
+{
+  ObSEArray<ClusterInfo, OB_MAX_CLUSTER_COUNT> clusters;
+  ObiRole role;
+  role.set_role(ObiRole::MASTER);
+  int ret = fetch_cluster_info(clusters, ms, timeout, role);
+  if (OB_SUCCESS != ret)
+  {
+    TBSYS_LOG(WARN, "fetch cluster info failed, ret %d, ms %s", ret, to_cstring(ms));
+  }
+  else
+  {
+    for (int64_t i = 0; OB_SUCCESS == ret && i < clusters.count(); i++)
+    {
+      ret = cluster_ids.push_back(clusters.at(i).first);
+    }
+  }
+  return ret;
+}
+
+int ObRootRpcStub::fetch_cluster_info(ClusterInfoArray &clusters, const common::ObServer &ms,
+            const int64_t timeout, const common::ObiRole &role)
+{
   int ret = OB_SUCCESS;
-  char sql_buf[OB_SQL_LENGTH];
-  ObString select_stmt;
-  ObDataBuffer msgbuf;
-  ObResultCode rs;
-  int64_t session_id;
+  char sql[OB_SQL_LENGTH];
 
   if (NULL == client_mgr_)
   {
     TBSYS_LOG(ERROR, "client_mgr is NULL");
     ret = OB_NOT_INIT;
   }
-
-  if (OB_SUCCESS == ret)
+  else
   {
-    int n = snprintf(sql_buf, OB_SQL_LENGTH, "select cluster_vip, rootserver_port from %s where cluster_role = 2;",
+    int left = sizeof(sql);
+    int n =  snprintf(sql, left, "select cluster_id, cluster_vip, rootserver_port from %s",
         OB_ALL_CLUSTER);
-    if (n < 0 || n >= OB_SQL_LENGTH)
+    if (n > 0 && n < left && role.get_role() != ObiRole::INIT)
     {
-      ret = OB_BUF_NOT_ENOUGH;
-      TBSYS_LOG(WARN, "failed to generate the sql of fetch_slave_cluster_list");
+      left -= n;
+      n = snprintf(sql + n, left, " where cluster_role = %d",
+          role.get_role() == ObiRole::MASTER ? 1 : 2);
     }
-    else
+    if (n < 0 || n >= left)
     {
-      select_stmt.assign_ptr(sql_buf, static_cast<ObString::obstr_size_t>(strlen(sql_buf)));
+      TBSYS_LOG(WARN, "failed to generate sql, n %d, errno %d", n, n < 0 ? errno : 0);
+      ret = OB_BUF_NOT_ENOUGH;
     }
   }
 
-  if (OB_SUCCESS == ret)
+  if (ret == OB_SUCCESS)
   {
+    ObDataBuffer msgbuf;
+    ObString sql_str = ObString::make_string(sql);
+    int64_t session_id = 0;
     if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
     {
       TBSYS_LOG(WARN, "failed to get thread buffer, ret=%d", ret);
     }
-    else if (OB_SUCCESS != (ret = select_stmt.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+    else if (OB_SUCCESS != (ret = sql_str.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
     {
-      TBSYS_LOG(WARN, "failed to serialize select stmt, ret=%d", ret);
+      TBSYS_LOG(WARN, "failed to serialize sql, ret=%d", ret);
     }
     else if (OB_SUCCESS !=
         (ret = client_mgr_->send_request(ms, OB_SQL_EXECUTE, DEFAULT_VERSION, timeout, msgbuf, session_id)))
     {
-      TBSYS_LOG(WARN, "failed to send request sql %.*s to ms %s, ret=%d",
-          select_stmt.length(), select_stmt.ptr(), to_cstring(ms), ret);
+      TBSYS_LOG(WARN, "failed to send request sql %s to ms %s, ret=%d", sql, to_cstring(ms), ret);
     }
     else
     {
@@ -1625,7 +1685,7 @@ int ObRootRpcStub::fetch_slave_cluster_list(const common::ObServer& ms,
         {
           ObNewScanner& scanner = rs.get_new_scanner();
 
-          if (OB_SUCCESS != (ret = fill_slave_cluster_list(scanner, master_rs, slave_cluster_rs, rs_count)))
+          if (OB_SUCCESS != (ret = fill_cluster_info(scanner, clusters)))
           {
             TBSYS_LOG(WARN, "failted to parse and update proxy list, ret=%d", ret);
             break;
@@ -1649,8 +1709,7 @@ int ObRootRpcStub::fetch_slave_cluster_list(const common::ObServer& ms,
   return ret;
 }
 
-int ObRootRpcStub::fill_slave_cluster_list(ObNewScanner& scanner, const ObServer& master_rs,
-    ObServer* slave_cluster_rs, int64_t& rs_count)
+int ObRootRpcStub::fill_cluster_info(common::ObNewScanner& scanner, ClusterInfoArray &clusters)
 {
   int ret = OB_SUCCESS;
   ObRow row;
@@ -1660,36 +1719,40 @@ int ObRootRpcStub::fill_slave_cluster_list(ObNewScanner& scanner, const ObServer
   int64_t cell_idx = 0;
 
   char ip_buffer[OB_IP_STR_BUFF];
-  int64_t slave_rs_count = 0;
 
   ObString ip;
   int64_t port = 0;
-  ObServer server;
+  ClusterInfo cluster;
 
-  while (OB_SUCCESS == (ret = scanner.get_next_row(row)))
+  while (OB_SUCCESS == ret && OB_SUCCESS == (ret = scanner.get_next_row(row)))
   {
+    // cluster_id                 int
     // ip                         varchar
     // port                       int
     cell_idx = 0;
     if (OB_SUCCESS != (ret = row.raw_get_cell(cell_idx++, cell, tid, cid)))
     {
       TBSYS_LOG(WARN, "failed to get cell, ret=%d", ret);
-      break;
+    }
+    else if (OB_SUCCESS != (ret = cell->get_int(cluster.first)))
+    {
+      TBSYS_LOG(WARN, "failed to get ip, ret=%d", ret);
+    }
+    if (OB_SUCCESS != (ret = row.raw_get_cell(cell_idx++, cell, tid, cid)))
+    {
+      TBSYS_LOG(WARN, "failed to get cell, ret=%d", ret);
     }
     else if (OB_SUCCESS != (ret = cell->get_varchar(ip)))
     {
       TBSYS_LOG(WARN, "failed to get ip, ret=%d", ret);
-      break;
     }
     else if (OB_SUCCESS != (ret = row.raw_get_cell(cell_idx++, cell, tid, cid)))
     {
       TBSYS_LOG(WARN, "failed to get cell, ret=%d", ret);
-      break;
     }
     else if (OB_SUCCESS != (ret = cell->get_int(port)))
     {
       TBSYS_LOG(WARN, "failed to get port, ret=%d", ret);
-      break;
     }
     else
     {
@@ -1705,25 +1768,20 @@ int ObRootRpcStub::fill_slave_cluster_list(ObNewScanner& scanner, const ObServer
         ret = OB_BUF_NOT_ENOUGH;
         TBSYS_LOG(WARN, "ip buffer not enough, ip=%.*s", ip.length(), ip.ptr());
       }
-      else if (!server.set_ipv4_addr(ip_buffer, static_cast<int32_t>(port)))
+      else if (!cluster.second.set_ipv4_addr(ip_buffer, static_cast<int32_t>(port)))
       {
         ret = OB_ERR_SYS;
         TBSYS_LOG(WARN, "failed to parse ip=%.*s", ip.length(), ip.ptr());
       }
-      else if (server.get_ipv4() == 0)
+      else if (cluster.second.get_ipv4() == 0)
       {
         ret = OB_INVALID_ARGUMENT;
         TBSYS_LOG(ERROR, "wrong proxy ip input ip=[%.*s] port=%ld, after parsed server=%s",
-            ip.length(), ip.ptr(), port, to_cstring(server));
+            ip.length(), ip.ptr(), port, to_cstring(cluster.second));
       }
-      else if (server == master_rs)
+      else if (OB_SUCCESS != (ret = clusters.push_back(cluster)))
       {
-        ret = OB_RS_STATE_NOT_ALLOW;
-        TBSYS_LOG(ERROR, "master_rs's cluster_role should not be 2! ip=%s", to_cstring(master_rs));
-      }
-      else
-      {
-        slave_cluster_rs[slave_rs_count++] = server;
+        TBSYS_LOG(WARN, "push to array failed, ret %d", ret);
       }
     }
   }
@@ -1731,7 +1789,6 @@ int ObRootRpcStub::fill_slave_cluster_list(ObNewScanner& scanner, const ObServer
   if (OB_ITER_END == ret)
   {
     ret = OB_SUCCESS;
-    rs_count = slave_rs_count;
   }
 
   return ret;

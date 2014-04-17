@@ -133,10 +133,17 @@ int ObRootInnerTableTask::modify_all_cluster_table(const ObRootAsyncTaskQueue::O
   }
   else if (task.type_ == OBI_ROLE_CHANGE)
   {
-    const char * sql_temp = "REPLACE INTO %s"
-      "(cluster_id, cluster_role)"
-      "VALUES(%d, %d);";
-    snprintf(buf, sizeof (buf), sql_temp, OB_ALL_CLUSTER, cluster_id_, task.cluster_role_);
+    if (1 == task.cluster_role_)
+    {
+      ret = clean_other_masters();
+    }
+    if (OB_SUCCESS == ret)
+    {
+      const char * sql_temp = "REPLACE INTO %s"
+        "(cluster_id, cluster_role)"
+        "VALUES(%d, %d);";
+      snprintf(buf, sizeof (buf), sql_temp, OB_ALL_CLUSTER, cluster_id_, task.cluster_role_);
+    }
   }
   else
   {
@@ -152,6 +159,48 @@ int ObRootInnerTableTask::modify_all_cluster_table(const ObRootAsyncTaskQueue::O
     {
       TBSYS_LOG(INFO, "process inner task succ:task_id[%lu], timestamp[%ld], sql[%s]",
           task.get_task_id(), task.get_task_timestamp(), buf);
+    }
+  }
+  return ret;
+}
+
+int ObRootInnerTableTask::clean_other_masters(void)
+{
+  int ret = OB_SUCCESS;
+  ObSEArray<int64_t, OB_MAX_CLUSTER_COUNT> cluster_ids;
+  ObServer ms;
+  bool query_master = true;
+  if (OB_SUCCESS != (ret = proxy_->ms_provider_.get_ms(ms, query_master)))
+  {
+    TBSYS_LOG(WARN, "get mergeserver address failed, ret %d", ret);
+  }
+  else if (OB_SUCCESS != (ret = proxy_->rpc_stub_.fetch_master_cluster_id_list(
+          ms, cluster_ids, TIMEOUT)))
+  {
+    TBSYS_LOG(WARN, "fetch master cluster id list failed, ret %d, ms %s", ret, to_cstring(ms));
+  }
+  else
+  {
+    char sql[OB_MAX_SQL_LENGTH];
+    for (int64_t i = 0; OB_SUCCESS == ret && i < cluster_ids.count(); i++)
+    {
+      if (cluster_ids.at(i) == cluster_id_)
+      {
+        continue;
+      }
+      int n = snprintf(sql, sizeof(sql),
+          "REPLACE INTO %s (cluster_id, cluster_role) VALUES (%ld, %d);",
+          OB_ALL_CLUSTER, cluster_ids.at(i), 2);
+      if (n < 0 || n >= static_cast<int>(sizeof(sql)))
+      {
+        TBSYS_LOG(WARN, "sql buffer not enough, n %d, errno %d", n, n < 0 ? errno : 0);
+        ret = OB_BUF_NOT_ENOUGH;
+      }
+      else if (OB_SUCCESS != (ret = proxy_->query(
+              query_master, RETRY_TIMES, TIMEOUT, ObString::make_string(sql))))
+      {
+        TBSYS_LOG(WARN, "execute sql [%s] failed, ret %d", sql, ret);
+      }
     }
   }
   return ret;

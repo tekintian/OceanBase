@@ -37,6 +37,7 @@ namespace oceanbase
       // exectue sql query
       int query(const int64_t retry_times, const int64_t timeout, const common::ObString & sql);
       int query(const bool query_master_cluster, const int64_t retry_times, const int64_t timeout, const common::ObString & sql);
+      friend class ObRootInnerTableTask;
     private:
       ObRootMsProvider ms_provider_;
       ObRootRpcStub & rpc_stub_;
